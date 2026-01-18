@@ -5,6 +5,8 @@
 import { handleSearch } from './commands/search.js';
 import { handleSchema } from './commands/schema.js';
 import { handleValidate } from './commands/validate.js';
+import { handleGet } from './commands/get.js';
+import { handleGraph } from './commands/graph.js';
 
 const VERSION = '1.0.0';
 
@@ -20,6 +22,8 @@ Usage:
 
 Commands:
   search <query>      Search instances in storage/*.yml using Lucene-like DSL
+  get <id>            Get a specific instance by ID with its relations
+  graph <id>          Visualize relationship graph from a starting node
   schema list         List all classes and relations defined in schema
   schema get <name>   Print schema for a specific class or relation
   validate            Validate instances against schema
@@ -31,6 +35,8 @@ Global Options:
 Examples:
   ontology search "_class:Person"
   ontology search "name:John*"
+  ontology get jdoe
+  ontology graph -d 2 jdoe
   ontology schema list
   ontology schema get Person
   ontology validate
@@ -97,6 +103,14 @@ export async function run(args) {
     switch (command) {
       case 'search':
         await handleSearch(commandArgs);
+        break;
+
+      case 'get':
+        await handleGet(commandArgs);
+        break;
+
+      case 'graph':
+        await handleGraph(commandArgs);
         break;
 
       case 'schema':

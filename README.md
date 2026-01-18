@@ -59,6 +59,51 @@ bun run bin/ontology.js schema get Person
 bun run bin/ontology.js schema get memberOf
 ```
 
+### Get Command
+
+Retrieve a single instance by its `_id` and display its spec with relationships.
+
+```bash
+# Get an instance by ID
+bun run bin/ontology.js get jdoe
+
+# Example output:
+# _class: Person
+# _id: jdoe
+# givenName: John
+# surname: Doe
+# ...
+# 
+# Relations:
+#   memberOf -> team-zulu
+#   reportsTo -> msmullin
+```
+
+### Graph Command
+
+Visualize the relationship graph starting from an instance.
+
+```bash
+# Show relationships for an instance (default depth: 1)
+bun run bin/ontology.js graph jdoe
+
+# Traverse deeper (depth 2)
+bun run bin/ontology.js graph -d 2 team-zulu
+
+# Example output:
+# _id       | relation  | parent   
+# ----------|-----------|----------
+# jdoe      | memberOf  | team-zulu
+# jdoe      | reportsTo | msmullin 
+```
+
+#### Graph Options
+
+| Option | Description |
+|--------|-------------|
+| `-d, --depth <n>` | Maximum traversal depth (default: 1) |
+| `-f, --format <fmt>` | Output format: table (default: table) |
+
 ### Validate Command
 
 Validate all instances against the schema.
