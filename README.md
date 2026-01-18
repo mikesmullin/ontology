@@ -129,6 +129,7 @@ bun run bin/ontology.js validate --strict
 - Required properties are present
 - Property types match schema
 - Relation endpoints exist
+- Relations defined in same file as `_from` instance
 - Domain/range constraints
 - Cardinality constraints
 

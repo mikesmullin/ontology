@@ -309,6 +309,9 @@ export function validate(data) {
     );
   }
 
+  // Validate relation placement (must be in same file as _from instance)
+  validateRelationPlacement(instances.relations, instancesById, errors, warnings);
+
   // Validate cardinality constraints
   validateCardinality(
     instances.relations,
@@ -327,6 +330,32 @@ export function validate(data) {
       relations: instances.relations.length
     }
   };
+}
+
+/**
+ * Validate that relations are defined in the same file as their _from instance
+ * @param {RelationInstance[]} relations
+ * @param {Map<string, ClassInstance>} instancesById
+ * @param {ValidationError[]} errors
+ * @param {ValidationError[]} warnings
+ */
+function validateRelationPlacement(relations, instancesById, errors, warnings) {
+  for (const relation of relations) {
+    const fromInstance = instancesById.get(relation._from);
+    if (!fromInstance) continue; // Already reported as missing
+
+    const relationSource = relation._source;
+    const instanceSource = fromInstance._source;
+
+    if (relationSource !== instanceSource) {
+      errors.push({
+        severity: 'error',
+        message: `Relation must be defined in same file as '${relation._from}' (expected ${instanceSource})`,
+        source: relationSource,
+        instance: `${relation._from} -[${relation._relation}]-> ${relation._to}`
+      });
+    }
+  }
 }
 
 /**
