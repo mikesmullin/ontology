@@ -88,6 +88,9 @@ schema:
 | `string` | Text value |
 | `bool` | Boolean (true/false) |
 | `date` | ISO 8601 date/datetime |
+| `string[]` | Array of text values |
+| `bool[]` | Array of booleans |
+| `date[]` | Array of dates |
 
 #### Example
 

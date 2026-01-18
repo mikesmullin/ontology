@@ -127,7 +127,7 @@ bun run bin/ontology.js validate --strict
 - `_id` is unique within namespace
 - `_class` reference exists in schema
 - Required properties are present
-- Property types match schema
+- Property types match schema (including array types like `string[]`)
 - Relation endpoints exist
 - Relations defined in same file as `_from` instance
 - Domain/range constraints

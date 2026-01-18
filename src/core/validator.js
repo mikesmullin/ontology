@@ -25,30 +25,60 @@
  */
 
 /**
- * Check if a value matches the expected type
+ * Check if a value matches the expected type (supports array types like 'string[]')
  * @param {*} value
- * @param {'string' | 'bool' | 'date'} type
- * @returns {boolean}
+ * @param {string} type - Type name, e.g. 'string', 'bool', 'date', 'string[]'
+ * @returns {{ valid: boolean, error?: string }}
  */
-function isValidType(value, type) {
+function validateType(value, type) {
   if (value === null || value === undefined) {
-    return false;
+    return { valid: false, error: 'value is null or undefined' };
   }
 
+  // Check for array type (e.g., 'string[]')
+  if (type.endsWith('[]')) {
+    const elementType = type.slice(0, -2);
+    
+    if (!Array.isArray(value)) {
+      return { valid: false, error: `expected array, got ${typeof value}` };
+    }
+    
+    for (let i = 0; i < value.length; i++) {
+      const result = validateType(value[i], elementType);
+      if (!result.valid) {
+        return { valid: false, error: `element [${i}]: ${result.error}` };
+      }
+    }
+    
+    return { valid: true };
+  }
+
+  // Scalar types
   switch (type) {
     case 'string':
-      return typeof value === 'string';
+      if (typeof value !== 'string') {
+        return { valid: false, error: `expected string, got ${typeof value}` };
+      }
+      return { valid: true };
     case 'bool':
-      return typeof value === 'boolean';
+      if (typeof value !== 'boolean') {
+        return { valid: false, error: `expected bool, got ${typeof value}` };
+      }
+      return { valid: true };
     case 'date':
       if (typeof value === 'string') {
-        // Check ISO 8601 format
         const date = new Date(value);
-        return !isNaN(date.getTime());
+        if (isNaN(date.getTime())) {
+          return { valid: false, error: 'invalid date format' };
+        }
+        return { valid: true };
       }
-      return value instanceof Date;
+      if (value instanceof Date) {
+        return { valid: true };
+      }
+      return { valid: false, error: `expected date, got ${typeof value}` };
     default:
-      return true;
+      return { valid: true };
   }
 }
 
@@ -81,11 +111,12 @@ function validateClassInstance(instance, classSchema, errors, warnings) {
     }
 
     // Check type if value exists
-    if (value !== undefined && value !== null) {
-      if (!isValidType(value, propDef.type)) {
+    if (value !== undefined && value !== null && propDef.type) {
+      const result = validateType(value, propDef.type);
+      if (!result.valid) {
         errors.push({
           severity: 'error',
-          message: `Property '${propName}' has invalid type: expected ${propDef.type}, got ${typeof value}`,
+          message: `Property '${propName}' has invalid type: ${result.error}`,
           source,
           instance: instanceId
         });
@@ -157,11 +188,12 @@ function validateRelationInstance(relation, relationSchema, instancesById, class
   if (relationSchema.qualifiers) {
     for (const [qualName, qualDef] of Object.entries(relationSchema.qualifiers)) {
       const value = relation[qualName];
-      if (value !== undefined && value !== null) {
-        if (!isValidType(value, qualDef.type)) {
+      if (value !== undefined && value !== null && qualDef.type) {
+        const result = validateType(value, qualDef.type);
+        if (!result.valid) {
           errors.push({
             severity: 'error',
-            message: `Qualifier '${qualName}' has invalid type: expected ${qualDef.type}`,
+            message: `Qualifier '${qualName}' has invalid type: ${result.error}`,
             source,
             instance: relationId
           });
