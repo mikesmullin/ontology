@@ -1,0 +1,23 @@
+{
+  "name": "ontology-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "CLI validation tool for the Ontology YAML specification",
+  "bin": {
+    "ontology": "./bin/ontology.js"
+  },
+  "scripts": {
+    "start": "bun run bin/ontology.js",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "yaml": "^2.3.0",
+    "glob": "^10.0.0"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

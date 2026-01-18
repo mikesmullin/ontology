@@ -31,6 +31,7 @@ ontology <command> [options]
 |---------|-------------|
 | `ontology search <query>` | Search instances in `storage/*.yml` using Lucene-like DSL |
 | `ontology schema list` | List all classes and relations defined in schema |
+| `ontology schema get <name>` | Print schema for a specific class or relation |
 
 ---
 
@@ -51,7 +52,7 @@ ontology schema list [options]
 | Option | Description |
 |--------|-------------|
 | `--json` | Output as JSON |
-| `--namespace <ns>` | Filter by namespace |
+| `-n, --namespace <ns>` | Filter by namespace |
 
 #### Example Output (default)
 
@@ -127,6 +128,124 @@ ontology schema list --json
     }
   }
 }
+```
+
+### 3.2 `ontology schema get <name>`
+
+Print the schema definition for a specific class or relation.
+
+#### Invocation
+
+```bash
+ontology schema get <name> [options]
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<name>` | Name of a class or relation (e.g., `Person`, `memberOf`) |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+| `-n, --namespace <ns>` | Specify namespace (if ambiguous) |
+
+#### Example: Get a Class
+
+```bash
+ontology schema get Person
+```
+```
+Class: Person
+Namespace: stormy
+
+Properties:
+  ├── givenName: string (required)
+  ├── surname: string (required)
+  ├── name: string (required)
+  ├── email: string (required)
+  ├── title: string (required)
+  ├── active: bool (required)
+  └── created: date (required)
+
+Relations (as domain):
+  ├── memberOf → Team [0..*]
+  └── reportsTo → Person [1..1]
+
+Relations (as range):
+  └── reportsTo ← Person [1..1]
+```
+
+#### Example: Get a Relation
+
+```bash
+ontology schema get memberOf
+```
+```
+Relation: memberOf
+Namespace: stormy
+
+  Person → Team [0..*]
+
+Cardinality: 0..many (optional, unbounded)
+Qualifiers: (none)
+```
+
+#### Example: Get with Qualifiers
+
+```bash
+ontology schema get owns
+```
+```
+Relation: owns
+Namespace: stormy
+
+  Team → Product [0..*]
+
+Cardinality: 0..many (optional, unbounded)
+Qualifiers:
+  └── role: string
+```
+
+#### Example: JSON Output
+
+```bash
+ontology schema get Person --json
+```
+```json
+{
+  "type": "class",
+  "name": "Person",
+  "namespace": "stormy",
+  "properties": {
+    "givenName": { "type": "string", "required": true },
+    "surname": { "type": "string", "required": true },
+    "name": { "type": "string", "required": true },
+    "email": { "type": "string", "required": true },
+    "title": { "type": "string", "required": true },
+    "active": { "type": "bool", "required": true },
+    "created": { "type": "date", "required": true }
+  },
+  "relationsAsDomain": [
+    { "name": "memberOf", "range": "Team", "cardinality": { "min": 0, "max": "many" } },
+    { "name": "reportsTo", "range": "Person", "cardinality": { "min": 1, "max": 1 } }
+  ],
+  "relationsAsRange": [
+    { "name": "reportsTo", "domain": "Person", "cardinality": { "min": 1, "max": 1 } }
+  ]
+}
+```
+
+#### Error: Not Found
+
+```bash
+ontology schema get Foo
+```
+```
+Error: No class or relation named 'Foo' found.
 ```
 
 ---
@@ -604,8 +723,7 @@ Error: Storage directory not found: ./storage
 
 ## 13. Future Enhancements
 
-- [ ] `ontology validate` — Validate instances against schema
-- [ ] `ontology lint` — Check for common issues
+- [x] `ontology validate` — Validate instances against schema
 - [ ] `ontology graph` — Visualize relations
 - [ ] `ontology export` — Export to other formats
 - [ ] Field type-aware comparisons (dates, numbers)

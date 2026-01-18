@@ -175,3 +175,15 @@ if the manager exists, we simply refer to him from `storage/person-jdoe.yml`
     _to: msmullin
 ```
 else, we (recurse to) lookup the manager, and create his file `storage/person-msmullin.yml`
+
+### Using the Ontology CLI
+
+The `ontology` CLI tool provides commands to search and inspect the ontology data.
+
+- read `README.md` (or run the `ontology` tool, to see help) to understand how to use this tool for:
+  - validation/linting Ontology YAML files
+  - searching Ontology YAML database
+  - etc.
+
+
+IMPORTANT: Whenever you make changes to the `storage/*.yml`, run `ontology validate` to confirm the changes are correct.
