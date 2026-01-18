@@ -6,29 +6,32 @@ import { loadSchema, loadAll } from '../../core/loader.js';
 
 /**
  * Format cardinality for display
- * @param {{ min: number, max: number | 'many' }} cardinality
+ * @param {string} cardinality - Cardinality code (oto, otm, mto, mtm)
  * @returns {string}
  */
 function formatCardinality(cardinality) {
-  const max = cardinality.max === 'many' ? '*' : cardinality.max;
-  return `[${cardinality.min}..${max}]`;
+  switch (cardinality) {
+    case 'oto': return '[1..1]';
+    case 'otm': return '[1..*]';
+    case 'mto': return '[*..1]';
+    case 'mtm': return '[*..*]';
+    default: return `[${cardinality}]`;
+  }
 }
 
 /**
  * Format cardinality as text description
- * @param {{ min: number, max: number | 'many' }} cardinality
+ * @param {string} cardinality - Cardinality code (oto, otm, mto, mtm)
  * @returns {string}
  */
 function formatCardinalityText(cardinality) {
-  const min = cardinality.min;
-  const max = cardinality.max;
-  
-  if (min === 0 && max === 'many') return 'optional, unbounded';
-  if (min === 1 && max === 1) return 'required, exactly one';
-  if (min === 1 && max === 'many') return 'required, unbounded';
-  if (min === 0 && max === 1) return 'optional, at most one';
-  
-  return `${min}..${max === 'many' ? 'many' : max}`;
+  switch (cardinality) {
+    case 'oto': return 'required, exactly one';
+    case 'otm': return 'required, unbounded';
+    case 'mto': return 'optional, at most one';
+    case 'mtm': return 'optional, unbounded';
+    default: return cardinality;
+  }
 }
 
 /**
@@ -75,17 +78,17 @@ function printSchemaTree(schema, namespace) {
   } else {
     for (const relName of relationNames) {
       const rel = schema.relations[relName];
-      const card = formatCardinality(rel.cardinality);
-      console.log(`  ${relName}`);
-      console.log(`    ${rel.domain} → ${rel.range} ${card}`);
+      const card = rel.cardinality || 'mtm';
+      let line = `  :${rel.domain} ${card} :${relName} :${rel.range}`;
       
       if (rel.qualifiers) {
         const qualNames = Object.keys(rel.qualifiers);
         if (qualNames.length > 0) {
-          const qualStr = qualNames.map(q => `${q} (${rel.qualifiers[q].type})`).join(', ');
-          console.log(`    qualifiers: ${qualStr}`);
+          const qualStr = qualNames.map(q => `${q}:${rel.qualifiers[q].type}`).join(', ');
+          line += ` [${qualStr}]`;
         }
       }
+      console.log(line);
     }
   }
 }
