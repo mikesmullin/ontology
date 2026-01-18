@@ -5,8 +5,8 @@
 import { loadAll } from '../../core/loader.js';
 import { tokenize } from '../../query/lexer.js';
 import { parse } from '../../query/parser.js';
-import { filterAll } from '../../query/evaluator.js';
-import { format } from '../../output/formatter.js';
+import { findMatches } from '../../query/evaluator.js';
+import { formatSearchResults } from '../../output/formatter.js';
 
 /**
  * Parse search command options
@@ -29,7 +29,8 @@ function parseArgs(args) {
       options.ids = true;
     } else if (arg === '-c' || arg === '--count') {
       options.count = true;
-    } else if (!arg.startsWith('-')) {
+    } else {
+      // Include all other args in query (including those starting with -)
       queryParts.push(arg);
     }
   }
@@ -42,7 +43,7 @@ function parseArgs(args) {
  */
 function showHelp() {
   console.log(`
-ontology search - Search instances using Lucene-like DSL
+ontology search - Search instances using grep-like DSL
 
 Usage:
   ontology search <query> [options]
@@ -53,22 +54,44 @@ Options:
   -c, --count      Show only match count
   --help           Show this help message
 
-Query Syntax:
-  field:"value"    Exact match on field
-  field:val*       Wildcard match (* = any chars, ? = one char)
-  _class:Person    Match instances of a class
-  _relation:owns   Match relation instances
-  value            Bare search across all fields
-  a AND b          Both conditions must match
-  a OR b           Either condition matches
-  NOT a            Exclude matches
-  (a OR b) AND c   Grouping
+Class Property Search Syntax:
+  <value>                    Search all properties for value (contains)
+  :Class: <value>            Search Class instances for value
+  :Class.property: <value>   Search Class.property for value
+  id:Class.property: <value> Search specific instance's property
+  id:: <value>               Search specific instance's all properties
+  :Class.property:           List all values of Class.property
+
+Relation Search Syntax:
+  -[:RELATION]->                 Find all RELATION relations
+  -[:RELATION].qualifier->       Find RELATIONs with qualifier
+  -[:RELATION]->: <target>       Find RELATIONs to target (contains)
+  -[:RELATION].qual->: <value>   Find RELATIONs with qualifier value
+  (id)-[:RELATION]->             Find relations from specific instance
+  (id:Class)-[:RELATION]->       Find relations from Class instance
+  (:Class)-[:RELATION]->         Find relations from any Class instance
+
+Boolean Operators:
+  AND                        Both conditions must match
+  OR                         Either condition matches
+  NOT                        Exclude matches
+  ( ... )                    Grouping
+
+Output Format:
+  Class properties:
+    <file>:<line>:<id>:<Class>.<property>: <value>
+  Relations:
+    <file>:<line>: <from>:<Class> :<RELATION> <to>:<Class> [qualifier="value"]
 
 Examples:
-  ontology search "_class:Person"
-  ontology search "name:John*"
-  ontology search "_class:Person AND active:true"
-  ontology search "_relation:memberOf AND _to:team-zulu"
+  ontology search John
+  ontology search ":Person: John"
+  ontology search ":Person.name: John"
+  ontology search "jdoe:Person.email:"
+  ontology search "-[:MEMBER_OF]->"
+  ontology search "(team-zulu:Team)-[:OWNS]->"
+  ontology search "(:Team)-[:OWNS].role->: owner"
+  ontology search "NOT John AND (:Team)-[:OWNS].role->: owner"
 `);
 }
 
@@ -107,10 +130,10 @@ export async function handleSearch(args) {
     process.exit(1);
   }
   
-  // Filter instances
-  const matches = filterAll(ast, data.instances);
+  // Find matches
+  const results = findMatches(ast, data.instances);
   
   // Format and output results
-  const output = format(matches, options);
+  const output = formatSearchResults(results, options);
   console.log(output);
 }
