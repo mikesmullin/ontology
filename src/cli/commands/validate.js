@@ -29,8 +29,8 @@ function formatIssues(items, label) {
   for (const [source, issues] of bySource) {
     lines.push(`  ${source}`);
     for (const issue of issues) {
-      const prefix = issue.severity === 'error' ? '✗' : '⚠';
-      lines.push(`    ${prefix} ${issue.instance}: ${issue.message}`);
+      const prefix = issue.severity === 'error' ? '✗' : '⚠️';
+      lines.push(`    ${prefix}\t${issue.instance}: ${issue.message}`);
     }
   }
 

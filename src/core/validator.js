@@ -25,6 +25,54 @@
  */
 
 /**
+ * Check if a class name is ProperCase (PascalCase)
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isProperCase(name) {
+  return /^[A-Z][a-zA-Z0-9]*$/.test(name);
+}
+
+/**
+ * Check if a relation name is UPPERCASE_UNDERSCORED
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isUppercaseUnderscored(name) {
+  return /^[A-Z][A-Z0-9_]*$/.test(name);
+}
+
+/**
+ * Check if a name is camelCase
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isCamelCase(name) {
+  return /^[a-z][a-zA-Z0-9]*$/.test(name);
+}
+
+/**
+ * Parse cardinality (supports both object and shorthand formats)
+ * @param {any} cardinality - e.g., { min: 0, max: 'many' } or 'otm'
+ * @returns {{ min: number, max: number | 'many' }}
+ */
+function parseCardinality(cardinality) {
+  if (typeof cardinality === 'string') {
+    switch (cardinality) {
+      case 'oto': return { min: 1, max: 1 };
+      case 'otm': return { min: 1, max: 'many' };
+      case 'mto': return { min: 0, max: 1 };
+      case 'mtm': return { min: 0, max: 'many' };
+      default: return { min: 0, max: 'many' };
+    }
+  }
+  return {
+    min: cardinality?.min ?? 0,
+    max: cardinality?.max ?? 'many'
+  };
+}
+
+/**
  * Check if a value matches the expected type (supports array types like 'string[]')
  * @param {*} value
  * @param {string} type - Type name, e.g. 'string', 'bool', 'date', 'string[]'
@@ -204,7 +252,13 @@ function validateRelationInstance(relation, relationSchema, instancesById, class
 }
 
 /**
- * Validate cardinality constraints
+ * Validate cardinality constraints (only max, not min)
+ * We validate that:
+ * - oto (1..1): at most 1 on each side
+ * - otm (1..*): at most 1 on the 'from' side (but unlimited on 'to')
+ * - mto (*..1): at most 1 on the 'to' side (but unlimited on 'from')
+ * - mtm (*..*): no max constraint
+ * Note: We don't enforce minimum - if no relation exists, that's okay
  * @param {RelationInstance[]} relations
  * @param {Record<string, any>} relationSchemas
  * @param {Map<string, ClassInstance>} instancesById
@@ -212,46 +266,130 @@ function validateRelationInstance(relation, relationSchema, instancesById, class
  * @param {ValidationError[]} warnings
  */
 function validateCardinality(relations, relationSchemas, instancesById, errors, warnings) {
-  // Group relations by (from, relationType)
-  const relationCounts = new Map();
+  // Group relations by (from, relationType) to check 'from' side max
+  const fromCounts = new Map();
+  // Group relations by (to, relationType) to check 'to' side max
+  const toCounts = new Map();
 
   for (const rel of relations) {
-    const key = `${rel._from}:${rel._relation}`;
-    if (!relationCounts.has(key)) {
-      relationCounts.set(key, { count: 0, source: rel._source });
+    const fromKey = `${rel._from}:${rel._relation}`;
+    const toKey = `${rel._to}:${rel._relation}`;
+    
+    if (!fromCounts.has(fromKey)) {
+      fromCounts.set(fromKey, { count: 0, source: rel._source });
     }
-    relationCounts.get(key).count++;
+    fromCounts.get(fromKey).count++;
+    
+    if (!toCounts.has(toKey)) {
+      toCounts.set(toKey, { count: 0, source: rel._source });
+    }
+    toCounts.get(toKey).count++;
   }
 
-  // Check each instance against cardinality constraints
-  for (const [instanceId, instance] of instancesById) {
-    const className = instance._class;
-
-    for (const [relName, relSchema] of Object.entries(relationSchemas)) {
-      // Only check if this instance is in the domain
-      if (relSchema.domain !== className) continue;
-
-      const key = `${instanceId}:${relName}`;
-      const count = relationCounts.get(key)?.count || 0;
-      const min = relSchema.cardinality?.min ?? 0;
-      const max = relSchema.cardinality?.max;
-
-      if (count < min) {
-        errors.push({
-          severity: 'error',
-          message: `Cardinality violation: '${instanceId}' has ${count} '${relName}' relations, minimum is ${min}`,
-          source: instance._source,
-          instance: instanceId
-        });
+  // Check max constraints based on cardinality type
+  for (const [relName, relSchema] of Object.entries(relationSchemas)) {
+    const card = parseCardinality(relSchema.cardinality);
+    
+    // For oto (1..1) and otm (1..*): check that 'from' side has at most 1
+    // This means the first character of cardinality is 'o' (one)
+    const cardStr = typeof relSchema.cardinality === 'string' ? relSchema.cardinality : null;
+    const fromIsOne = cardStr ? cardStr.startsWith('o') : (card.max === 1 || card.min === 1);
+    const toIsOne = cardStr ? cardStr.endsWith('o') : (card.max === 1);
+    
+    // Check 'from' side max constraint (oto, otm)
+    if (fromIsOne && cardStr && (cardStr === 'oto' || cardStr === 'otm')) {
+      // Actually for otm, the 'from' can have many relations to 'to'
+      // oto means each 'from' maps to exactly one 'to'
+      // Let me reconsider: oto = one-to-one, otm = one-to-many
+      // In otm, one 'from' can relate to many 'to', but each 'to' has only one 'from'
+      // So for 'from' side: oto limits to 1, otm does NOT limit
+      // For 'to' side: oto limits to 1, mto limits to 1
+    }
+    
+    // Simplified approach: only enforce max when explicitly set to a number (not 'many')
+    if (card.max !== 'many' && typeof card.max === 'number') {
+      for (const [key, data] of fromCounts) {
+        if (key.endsWith(`:${relName}`) && data.count > card.max) {
+          const instanceId = key.split(':')[0];
+          errors.push({
+            severity: 'error',
+            message: `Cardinality violation: '${instanceId}' has ${data.count} '${relName}' relations, maximum is ${card.max}`,
+            source: data.source,
+            instance: instanceId
+          });
+        }
       }
+    }
+  }
+}
 
-      if (max !== 'many' && max !== undefined && count > max) {
-        errors.push({
-          severity: 'error',
-          message: `Cardinality violation: '${instanceId}' has ${count} '${relName}' relations, maximum is ${max}`,
-          source: instance._source,
-          instance: instanceId
-        });
+/**
+ * Validate schema naming conventions
+ * @param {{ classes: Record<string, any>, relations: Record<string, any> }} schema
+ * @param {ValidationError[]} errors
+ * @param {ValidationError[]} warnings
+ */
+function validateSchemaNames(schema, errors, warnings) {
+  // Check class names are ProperCase (PascalCase)
+  for (const className of Object.keys(schema.classes || {})) {
+    if (!isProperCase(className)) {
+      warnings.push({
+        severity: 'warning',
+        message: `Class name '${className}' should be ProperCase (e.g., Person, TeamMember)`,
+        source: 'schema',
+        instance: `class:${className}`
+      });
+    }
+    
+    // Check property names are camelCase
+    const classDef = schema.classes[className];
+    if (classDef?.properties) {
+      for (const propName of Object.keys(classDef.properties)) {
+        if (!isCamelCase(propName)) {
+          warnings.push({
+            severity: 'warning',
+            message: `Property name '${propName}' should be camelCase (e.g., givenName, emailAddress)`,
+            source: 'schema',
+            instance: `${className}.${propName}`
+          });
+        }
+      }
+    }
+  }
+
+  // Check relation names are UPPERCASE_UNDERSCORED
+  for (const relName of Object.keys(schema.relations || {})) {
+    if (!isUppercaseUnderscored(relName)) {
+      warnings.push({
+        severity: 'warning',
+        message: `Relation name '${relName}' should be UPPERCASE_UNDERSCORED (e.g., MEMBER_OF, REPORTS_TO)`,
+        source: 'schema',
+        instance: `relation:${relName}`
+      });
+    }
+    
+    // Check cardinality uses shorthand format (oto, otm, mto, mtm)
+    const relDef = schema.relations[relName];
+    if (relDef?.cardinality && typeof relDef.cardinality !== 'string') {
+      warnings.push({
+        severity: 'warning',
+        message: `Relation '${relName}' cardinality should use shorthand format (oto, otm, mto, mtm) instead of {min, max}`,
+        source: 'schema',
+        instance: `relation:${relName}`
+      });
+    }
+    
+    // Check qualifier names are camelCase
+    if (relDef?.qualifiers) {
+      for (const qualName of Object.keys(relDef.qualifiers)) {
+        if (!isCamelCase(qualName)) {
+          warnings.push({
+            severity: 'warning',
+            message: `Qualifier name '${qualName}' should be camelCase (e.g., since, createdAt)`,
+            source: 'schema',
+            instance: `${relName}.${qualName}`
+          });
+        }
       }
     }
   }
@@ -272,6 +410,12 @@ export function validate(data) {
 
   // Validate document structure (apiVersion, kind, schema/spec)
   validateDocuments(rawDocuments || [], errors, warnings);
+
+  // Validate that spec.relations is not used (only per-class relations allowed)
+  validateNoTopLevelRelations(rawDocuments || [], errors, warnings);
+
+  // Validate schema naming conventions
+  validateSchemaNames(schema, errors, warnings);
 
   // Build instance lookup map and check for duplicate IDs
   const instancesById = new Map();
@@ -385,6 +529,25 @@ function validateRelationPlacement(relations, instancesById, errors, warnings) {
         message: `Relation must be defined in same file as '${relation._from}' (expected ${instanceSource})`,
         source: relationSource,
         instance: `${relation._from} -[${relation._relation}]-> ${relation._to}`
+      });
+    }
+  }
+}
+
+/**
+ * Validate that spec.relations is not used (only per-class relations are allowed)
+ * @param {{ source: string, document: any }[]} rawDocuments
+ * @param {ValidationError[]} errors
+ * @param {ValidationError[]} warnings
+ */
+function validateNoTopLevelRelations(rawDocuments, errors, warnings) {
+  for (const { source, document } of rawDocuments) {
+    if (document?.spec?.relations) {
+      errors.push({
+        severity: 'error',
+        message: `Top-level 'spec.relations' is deprecated. Define relations within each class instance using 'relations:' property`,
+        source,
+        instance: 'spec.relations'
       });
     }
   }

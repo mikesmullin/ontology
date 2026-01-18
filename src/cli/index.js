@@ -7,8 +7,12 @@ import { handleSchema } from './commands/schema.js';
 import { handleValidate } from './commands/validate.js';
 import { handleGet } from './commands/get.js';
 import { handleGraph } from './commands/graph.js';
+import { handleDecl } from './commands/decl.js';
+import { handleNew } from './commands/new.js';
+import { handleLink } from './commands/link.js';
+import { handleSet } from './commands/set.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 /**
  * Display help message
@@ -20,28 +24,45 @@ ontology - CLI tool for Ontology YAML specification
 Usage:
   ontology <command> [options]
 
-Commands:
-  search <query>      Search instances in storage/*.yml using Lucene-like DSL
-  get <id>            Get a specific instance by ID with its relations
+T-box Commands (Schema):
+  decl cls <class>                         Declare a new class
+  decl rel <class> <type> <rel> <class>    Declare a new relation
+  decl prop <class> <key>:<type> [...]     Declare properties on a class
+  decl qual <rel> <key>:<type> [...]       Declare qualifiers on a relation
+
+A-box Commands (Instances):
+  new <id>:<class>                         Create a new instance
+  link <from>:<class> <rel> <to>:<class>   Create a relation between instances
+  set <id>:<class> <key>=<value> [...]     Set properties on an instance
+  get <id>                                 Get instance with its relations
+
+Query Commands:
+  search <query>      Search instances using Lucene-like DSL
   graph <id>          Visualize relationship graph from a starting node
-  schema list         List all classes and relations defined in schema
-  schema get <name>   Print schema for a specific class or relation
+  schema list         List all classes and relations
+  schema get <name>   Print schema for a class or relation
   validate            Validate instances against schema
 
 Global Options:
   --help, -h          Show this help message
-  --version, -V       Show version number
+  --verbose           Show detailed output
+  --quiet, -q         Suppress output except errors
 
 Examples:
-  ontology search "_class:Person"
-  ontology search "name:John*"
+  # T-box (schema) declarations
+  ontology decl cls :Person
+  ontology decl rel :Person otm :MEMBER_OF :Team
+  ontology decl prop :Person name:string required
+
+  # A-box (instance) operations
+  ontology new jdoe:Person
+  ontology set jdoe:Person name="John Doe"
+  ontology link jdoe:Person memberOf team-zulu:Team
+
+  # Queries
+  ontology search "name=John"
   ontology get jdoe
   ontology graph -d 2 jdoe
-  ontology schema list
-  ontology schema get Person
-  ontology validate
-
-For more information, see docs/PLAN.md
 `);
 }
 
@@ -119,6 +140,22 @@ export async function run(args) {
 
       case 'validate':
         await handleValidate(commandArgs);
+        break;
+
+      case 'decl':
+        await handleDecl(commandArgs);
+        break;
+
+      case 'new':
+        await handleNew(commandArgs);
+        break;
+
+      case 'link':
+        await handleLink(commandArgs);
+        break;
+
+      case 'set':
+        await handleSet(commandArgs);
         break;
 
       default:

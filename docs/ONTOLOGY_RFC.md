@@ -1,8 +1,8 @@
 # Ontology YAML Specification RFC
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft  
-**Date:** January 17, 2026
+**Date:** January 18, 2026
 
 ---
 
@@ -162,12 +162,10 @@ Relations define how classes connect to each other.
 ```yaml
 schema:
   relations:
-    relationName:
+    RELATION_NAME:
       domain: <SourceClass>
       range: <TargetClass>
-      cardinality:
-        min: <number>
-        max: <number|many>
+      cardinality: <oto|otm|mto|mtm>
       qualifiers:
         qualifierName:
           type: <type>
@@ -177,43 +175,48 @@ schema:
 |-------|------|----------|-------------|
 | `domain` | string | Yes | Source class (the "from" side) |
 | `range` | string | Yes | Target class (the "to" side) |
-| `cardinality.min` | number | Yes | Minimum required relations |
-| `cardinality.max` | number\|"many" | Yes | Maximum allowed relations |
+| `cardinality` | string | Yes | Cardinality code (see below) |
 | `qualifiers` | object | No | Additional attributes on the relation |
 
-#### Cardinality Examples
+#### Cardinality Codes
 
-| Pattern | Meaning |
-|---------|---------|
-| `min: 0, max: many` | Optional, unbounded (0..∞) |
-| `min: 1, max: 1` | Required, exactly one (1..1) |
-| `min: 1, max: many` | Required, unbounded (1..∞) |
+| Code | Pattern | Meaning |
+|------|---------|--------|
+| `oto` | 1..1 | one-to-one (required, exactly one) |
+| `otm` | 1..* | one-to-many (required, unbounded) |
+| `mto` | *..1 | many-to-one (optional, at most one) |
+| `mtm` | *..* | many-to-many (optional, unbounded) |
+
+> **Note:** Cardinality validation only enforces the maximum constraint. Minimum constraints are advisory.
+
+#### Naming Conventions
+
+| Element | Convention | Example |
+|---------|------------|--------|
+| Classes | ProperCase | `Person`, `TeamMember` |
+| Relations | UPPERCASE_UNDERSCORED | `MEMBER_OF`, `REPORTS_TO` |
+| Properties | camelCase | `givenName`, `emailAddress` |
+| Qualifiers | camelCase | `since`, `role` |
 
 #### Example
 
 ```yaml
 schema:
   relations:
-    memberOf:
+    MEMBER_OF:
       domain: Person
       range: Team
-      cardinality:
-        min: 0
-        max: many
+      cardinality: mtm
     
-    reportsTo:
+    REPORTS_TO:
       domain: Person
       range: Person
-      cardinality:
-        min: 1
-        max: 1
+      cardinality: oto
     
-    owns:
+    OWNS:
       domain: Team
       range: Product
-      cardinality:
-        min: 0
-        max: many
+      cardinality: mtm
       qualifiers:
         role:
           type: string
@@ -233,6 +236,9 @@ spec:
   - _class: <ClassName>
     _id: <unique-identifier>
     propertyName: value
+    relations:
+      RELATION_NAME:
+      - target_id
 ```
 
 | Field | Type | Required | Description |
@@ -240,6 +246,7 @@ spec:
 | `_class` | string | Yes | Reference to a defined class |
 | `_id` | string | Yes | Unique identifier for this instance |
 | `<property>` | varies | Per schema | Property values as defined in schema |
+| `relations` | object | No | Per-class relations (see 4.2) |
 
 #### Example
 
@@ -255,44 +262,58 @@ spec:
     title: "Software Engineer"
     active: true
     created: "2015-06-12T23:46:05Z"
+    relations:
+      MEMBER_OF:
+      - team-zulu
+      REPORTS_TO:
+      - msmullin
 ```
 
-### 4.2 Relation Instances
+### 4.2 Relation Instances (Per-Class Format)
+
+Relations are defined within each class instance using a compact object format:
 
 ```yaml
 spec:
-  relations:
-  - _from: <source_id>
-    _relation: <relationName>
-    _to: <target_id>
-    qualifierName: value
+  classes:
+  - _class: <ClassName>
+    _id: <source_id>
+    relations:
+      <RELATION_NAME>:
+      - <target_id>
+      - { _to: <target_id>, qualifierName: value }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `_from` | string | Yes | ID of the source instance |
-| `_relation` | string | Yes | Name of the relation type |
-| `_to` | string | Yes | ID of the target instance |
-| `<qualifier>` | varies | No | Qualifier values as defined in schema |
+| `relations` | object | No | Map of relation types to target lists |
+| `<RELATION_NAME>` | array | - | List of targets for this relation type |
+| `<target_id>` | string | - | Simple target reference (ID only) |
+| `{ _to, ... }` | object | - | Target with qualifiers |
 
 #### Example
 
 ```yaml
 spec:
-  relations:
-  - _from: jdoe
-    _relation: memberOf
-    _to: team-zulu
-  
-  - _from: jdoe
-    _relation: reportsTo
-    _to: msmullin
-  
-  - _from: team-zulu
-    _relation: owns
-    _to: tetris
-    role: "product-owner"
+  classes:
+  - _class: Person
+    _id: jdoe
+    givenName: "John"
+    surname: "Doe"
+    relations:
+      MEMBER_OF:
+      - team-zulu
+      REPORTS_TO:
+      - msmullin
+
+  - _class: Team
+    _id: team-zulu
+    relations:
+      OWNS:
+      - { _to: tetris, role: "product-owner" }
 ```
+
+> **Note:** The `_from` is implicitly the `_id` of the containing class instance.
 
 ---
 
@@ -339,11 +360,11 @@ spec:
 
 ### 5.3 Relation Placement
 
-Relations can be defined in:
+Relations are defined per-class within the `relations` property of each class instance:
 
-1. **The source entity's file** — Logical when the relation "belongs" to that entity
-2. **The target entity's file** — When grouping by the target makes more sense
-3. **A dedicated relations file** — For complex cross-cutting relationships
+- Relations are always co-located with their source (`_from`) entity
+- The `_from` is implicit — it is the `_id` of the containing class instance
+- This ensures clear ownership and simplifies validation
 
 ---
 
@@ -370,24 +391,18 @@ schema:
     Team: {}
     Product: {}
   relations:
-    memberOf:
+    MEMBER_OF:
       domain: Person
       range: Team
-      cardinality:
-        min: 0
-        max: many
-    reportsTo:
+      cardinality: mtm
+    REPORTS_TO:
       domain: Person
       range: Person
-      cardinality:
-        min: 1
-        max: 1
-    owns:
+      cardinality: oto
+    OWNS:
       domain: Team
       range: Product
-      cardinality:
-        min: 0
-        max: many
+      cardinality: mtm
       qualifiers:
         role:
           type: string
@@ -411,10 +426,11 @@ spec:
     title: "Software Engineer"
     active: true
     created: "2015-06-12T23:46:05Z"
-  relations:
-  - _from: jdoe
-    _relation: reportsTo
-    _to: msmullin
+    relations:
+      MEMBER_OF:
+      - team-zulu
+      REPORTS_TO:
+      - msmullin
 ```
 
 ### Team Instance (`storage/team-zulu.yml`)
@@ -428,14 +444,9 @@ spec:
   classes:
   - _class: Team
     _id: team-zulu
-  relations:
-  - _from: team-zulu
-    _relation: owns
-    _to: tetris
-    role: "product-owner"
-  - _from: jdoe
-    _relation: memberOf
-    _to: team-zulu
+    relations:
+      OWNS:
+      - { _to: tetris, role: "product-owner" }
 ```
 
 ---
@@ -503,8 +514,8 @@ The following field prefixes are reserved for system use:
 | `_id` | Instance identifier |
 | `_from` | Relation source |
 | `_to` | Relation target |
-| `_relation` | Relation type |
-
+| `_relation` | Relation type || `_namespace` | Namespace identifier (internal) |
+| `_source` | Source file path (internal) |
 ---
 
 ## Appendix B: Grammar Summary
@@ -513,10 +524,11 @@ The following field prefixes are reserved for system use:
 Document     := Header (Schema | Spec)
 Header       := apiVersion kind metadata
 Schema       := schema { classes, relations }
-Spec         := spec { classes[], relations[] }
+Spec         := spec { classes[] }
 Class        := ClassName { properties }
 Property     := name { type, required }
 Relation     := name { domain, range, cardinality, qualifiers? }
-ClassInst    := _class, _id, ...properties
-RelationInst := _from, _relation, _to, ...qualifiers
+Cardinality  := "oto" | "otm" | "mto" | "mtm"
+ClassInst    := _class, _id, ...properties, relations?
+RelationsMap := { RELATION_NAME: [target | { _to, ...qualifiers }] }
 ```

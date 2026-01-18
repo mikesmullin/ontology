@@ -2,7 +2,7 @@
  * Output Formatters - Format search results for display
  */
 
-import { stringify } from 'yaml';
+import yaml from 'js-yaml';
 
 /**
  * @typedef {import('../core/types.js').ClassInstance} ClassInstance
@@ -136,7 +136,7 @@ export function formatVerbose(matches) {
       return copy;
     });
     
-    lines.push(stringify(cleaned).trimEnd());
+    lines.push(yaml.dump(cleaned, { lineWidth: -1, noRefs: true }).trimEnd());
     lines.push('');
   }
 

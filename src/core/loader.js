@@ -5,7 +5,7 @@
 import { readdir, readFile } from 'fs/promises';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { parseAllDocuments } from 'yaml';
+import yaml from 'js-yaml';
 
 /**
  * @typedef {import('./types.js').OntologyDocument} OntologyDocument
@@ -62,11 +62,9 @@ async function listYamlFiles(storagePath) {
  */
 async function parseYamlFile(filePath) {
   const content = await readFile(filePath, 'utf-8');
-  const docs = parseAllDocuments(content);
+  const docs = yaml.loadAll(content);
   
-  return docs
-    .map(doc => doc.toJS())
-    .filter(doc => doc !== null && doc !== undefined);
+  return docs.filter(doc => doc !== null && doc !== undefined);
 }
 
 /**
@@ -97,6 +95,53 @@ function extractSchema(docs, filePath) {
 }
 
 /**
+ * Extract per-class relations from a class instance
+ * @param {any} instance - Class instance with potential relations property
+ * @param {string} namespace
+ * @param {string} relativePath
+ * @returns {RelationInstance[]}
+ */
+function extractPerClassRelations(instance, namespace, relativePath) {
+  const relations = [];
+  
+  if (!instance.relations || typeof instance.relations !== 'object') {
+    return relations;
+  }
+
+  const fromId = instance._id;
+  
+  for (const [relationName, targets] of Object.entries(instance.relations)) {
+    if (!Array.isArray(targets)) continue;
+    
+    for (const target of targets) {
+      // Target can be a string (just ID) or an object with _to and qualifiers
+      if (typeof target === 'string') {
+        relations.push({
+          _from: fromId,
+          _relation: relationName,
+          _to: target,
+          _namespace: namespace,
+          _source: relativePath
+        });
+      } else if (typeof target === 'object' && target._to) {
+        // Object with _to and qualifiers
+        const { _to, ...qualifiers } = target;
+        relations.push({
+          _from: fromId,
+          _relation: relationName,
+          _to,
+          ...qualifiers,
+          _namespace: namespace,
+          _source: relativePath
+        });
+      }
+    }
+  }
+  
+  return relations;
+}
+
+/**
  * Extract instances from documents
  * @param {OntologyDocument[]} docs
  * @param {string} filePath
@@ -111,21 +156,18 @@ function extractInstances(docs, filePath) {
     if (doc.apiVersion !== 'agent/v1' || doc.kind !== 'Ontology') continue;
     
     const namespace = doc.metadata?.namespace || 'default';
-
+    
     if (doc.spec?.classes) {
       for (const instance of doc.spec.classes) {
+        // Extract per-class relations first (before removing from instance)
+        const instanceRelations = extractPerClassRelations(instance, namespace, relativePath);
+        relations.push(...instanceRelations);
+        
+        // Create a copy without the relations property for the class instance
+        const { relations: _, ...instanceWithoutRelations } = instance;
+        
         classes.push({
-          ...instance,
-          _namespace: namespace,
-          _source: relativePath
-        });
-      }
-    }
-
-    if (doc.spec?.relations) {
-      for (const instance of doc.spec.relations) {
-        relations.push({
-          ...instance,
+          ...instanceWithoutRelations,
           _namespace: namespace,
           _source: relativePath
         });

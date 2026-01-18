@@ -32,24 +32,18 @@ schema:
     Team: {}
     Product: {}
   relations:
-    memberOf:
+    MEMBER_OF:
       domain: Person
-      range:  Team
-      cardinality:
-        min: 0
-        max: many
-    reportsTo:
+      range: Team
+      cardinality: mtm
+    REPORTS_TO:
       domain: Person
-      range:  Person
-      cardinality:
-        min: 1
-        max: 1
-    owns:
+      range: Person
+      cardinality: oto
+    OWNS:
       domain: Team
       range: Product
-      cardinality:
-        min: 0
-        max: many
+      cardinality: mtm
       qualifiers:
         role:
           type: string
@@ -132,14 +126,17 @@ spec:
     title: "Software Engineer"
     active: true
     created: "2015-06-12T23:46:05Z"
+    relations:
+      MEMBER_OF:
+      - team-zulu
+      REPORTS_TO:
+      - msmullin
 ```
 
-followed by a check for existing relationship instances;
-  if found, then we use those existing instance `_id`
-    and update the existing definition file
-      by appending our new relation
-  else, we define a new instance and proceed to use its `_id`
-    to define the corresponding relations
+Relations are defined within the class instance using a compact format:
+- The `_from` is implicit (it's the `_id` of the containing class)
+- Each relation type maps to an array of targets
+- For relations with qualifiers, use `{ _to: target, qualifier: value }`
 
 ie. link the team
 ```yml
@@ -152,27 +149,21 @@ spec:
   classes:
   - _class: Team
     _id: team-zulu
-  relations:
-  - _from: team-zulu
-    _relation: owns
-    _to: tetris
-    role: "product-owner"
-  # ...
-  - _from: jdoe
-    _relation: memberOf
-    _to: team-zulu
+    relations:
+      OWNS:
+      - { _to: tetris, role: "product-owner" }
 ```
 
 ie. link the manager
 
-if the manager exists, we simply refer to him from `storage/person-jdoe.yml`
+if the manager exists, we add the relation within `storage/person-jdoe.yml`:
 ```yml
-  # ...
-  relations:
-  # ...
-  - _from: jdoe
-    _relation: reportsTo
-    _to: msmullin
+  # within the class instance...
+    relations:
+      MEMBER_OF:
+      - team-zulu
+      REPORTS_TO:
+      - msmullin
 ```
 else, we (recurse to) lookup the manager, and create his file `storage/person-msmullin.yml`
 
