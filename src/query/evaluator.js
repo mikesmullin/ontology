@@ -280,8 +280,15 @@ function findPropertyMatches(node, instance) {
     return matches;
   }
 
-  // If no value and no property specified, just check existence (no matches to show)
+  // If no value and no property specified, return instance as a match (class-only filter)
   if (node.value === null) {
+    // Return a special match indicating the whole instance matched by class
+    matches.push({
+      property: '_class',
+      value: instance._class,
+      lineNumber: 0,
+      matchedText: ''
+    });
     return matches;
   }
 
