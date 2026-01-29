@@ -201,22 +201,29 @@ export async function handleLink(args) {
   for (let i = 0; i < docs.length; i++) {
     const parsed = docs[i];
     if (parsed?.spec?.classes) {
-      // Found a spec document, add relation here
-      if (!parsed.spec.relations) {
-        parsed.spec.relations = [];
+      // Find the source instance within this document's classes
+      const classInstance = parsed.spec.classes.find(c => c._id === fromId);
+      if (classInstance) {
+        // Ensure relations object exists on the instance
+        if (!classInstance.relations) {
+          classInstance.relations = {};
+        }
+        
+        // Ensure array exists for this relation type
+        if (!classInstance.relations[relationName]) {
+          classInstance.relations[relationName] = [];
+        }
+        
+        // Create relation entry - simple form (just target id) or with qualifiers
+        const hasQualifiers = Object.keys(qualifiers).length > 0;
+        const relationEntry = hasQualifiers 
+          ? { _to: toId, ...qualifiers }
+          : toId;
+        
+        classInstance.relations[relationName].push(relationEntry);
+        updated = true;
+        break;
       }
-      
-      // Create relation object
-      const relation = {
-        _from: fromId,
-        _relation: relationName,
-        _to: toId,
-        ...qualifiers
-      };
-      
-      parsed.spec.relations.push(relation);
-      updated = true;
-      break;
     }
   }
   
