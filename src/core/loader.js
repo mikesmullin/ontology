@@ -71,10 +71,10 @@ async function parseYamlFile(filePath) {
  * Extract schema from documents
  * @param {OntologyDocument[]} docs
  * @param {string} filePath
- * @returns {{ classes: Record<string, any>, relations: Record<string, any>, namespace: string | null }}
+ * @returns {{ components: Record<string, any>, classes: Record<string, any>, relations: Record<string, any>, namespace: string | null }}
  */
 function extractSchema(docs, filePath) {
-  const result = { classes: {}, relations: {}, namespace: null };
+  const result = { components: {}, classes: {}, relations: {}, namespace: null };
 
   for (const doc of docs) {
     if (doc.apiVersion !== 'agent/v1' || doc.kind !== 'Ontology') continue;
@@ -83,6 +83,9 @@ function extractSchema(docs, filePath) {
       result.namespace = doc.metadata.namespace;
     }
 
+    if (doc.schema?.components) {
+      Object.assign(result.components, doc.schema.components);
+    }
     if (doc.schema?.classes) {
       Object.assign(result.classes, doc.schema.classes);
     }
@@ -194,7 +197,7 @@ export async function loadAll(customPath) {
   
   /** @type {LoadedData} */
   const result = {
-    schema: { classes: {}, relations: {}, namespaces: new Set() },
+    schema: { components: {}, classes: {}, relations: {}, namespaces: new Set() },
     instances: { classes: [], relations: [] },
     files: [],
     rawDocuments: []
@@ -216,6 +219,7 @@ export async function loadAll(customPath) {
 
     // Extract schema
     const schema = extractSchema(docs, filePath);
+    Object.assign(result.schema.components, schema.components);
     Object.assign(result.schema.classes, schema.classes);
     Object.assign(result.schema.relations, schema.relations);
     if (schema.namespace) {

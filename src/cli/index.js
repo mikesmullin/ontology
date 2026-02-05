@@ -26,21 +26,22 @@ Usage:
 
 T-box Commands (Schema):
   decl cls <class>                         Declare a new class
+  decl comp <component> <key>:<type> [...] Declare a new component with properties
   decl rel <class> <type> <rel> <class>    Declare a new relation
-  decl prop <class> <key>:<type> [...]     Declare properties on a class
+  decl prop <component> <key>:<type> [...]   Add properties to a component
   decl qual <rel> <key>:<type> [...]       Declare qualifiers on a relation
 
 A-box Commands (Instances):
   new <id>:<class>                         Create a new instance
   link <from>:<class> <rel> <to>:<class>   Create a relation between instances
-  set <id>:<class> <key>=<value> [...]     Set properties on an instance
+  set <id>:<class> <comp>.<key>=<value>    Set component properties on an instance
   get <id>                                 Get instance with its relations
 
 Query Commands:
   search <query>      Search instances using Lucene-like DSL
   graph <id>          Visualize relationship graph from a starting node
-  schema list         List all classes and relations
-  schema get <name>   Print schema for a class or relation
+  schema list         List all classes, components, and relations
+  schema get <name>   Print schema for a class, component, or relation
   validate            Validate instances against schema
 
 Global Options:
@@ -51,12 +52,12 @@ Global Options:
 Examples:
   # T-box (schema) declarations
   ontology decl cls :Person
+  ontology decl comp :Identity givenName:string surname:string name:string
   ontology decl rel :Person otm :MEMBER_OF :Team
-  ontology decl prop :Person name:string required
 
   # A-box (instance) operations
   ontology new jdoe:Person
-  ontology set jdoe:Person name="John Doe"
+  ontology set jdoe:Person identity.name="John Doe"
   ontology link jdoe:Person memberOf team-zulu:Team
 
   # Queries

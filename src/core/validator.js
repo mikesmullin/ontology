@@ -131,43 +131,122 @@ function validateType(value, type) {
 }
 
 /**
- * Validate a class instance against schema
+ * Validate a class instance against schema (component-based)
  * @param {ClassInstance} instance
  * @param {Record<string, any>} classSchema
+ * @param {Record<string, any>} componentSchemas - All component definitions
  * @param {ValidationError[]} errors
  * @param {ValidationError[]} warnings
  */
-function validateClassInstance(instance, classSchema, errors, warnings) {
+function validateClassInstance(instance, classSchema, componentSchemas, errors, warnings) {
   const source = instance._source || 'unknown';
   const instanceId = `${instance._class}:${instance._id}`;
 
-  // Check required properties
-  const properties = classSchema?.properties || {};
-  
-  for (const [propName, propDef] of Object.entries(properties)) {
-    const value = instance[propName];
+  // Get the components defined for this class
+  const classComponents = classSchema?.components || {};
+  const instanceComponents = instance.components || {};
 
-    // Check required
-    if (propDef.required && (value === undefined || value === null)) {
+  // Reserved/system fields that are allowed at the instance level
+  const reservedFields = new Set(['_class', '_id', '_namespace', '_source', 'relations', 'components']);
+
+  // Check for any properties at instance root level (not allowed - must be in components)
+  for (const key of Object.keys(instance)) {
+    if (!reservedFields.has(key)) {
       errors.push({
         severity: 'error',
-        message: `Missing required property '${propName}'`,
+        message: `Property '${key}' must be defined inside a component, not at instance root level`,
+        source,
+        instance: instanceId
+      });
+    }
+  }
+
+  // Validate each component instance
+  for (const [localName, componentValues] of Object.entries(instanceComponents)) {
+    // Check if this local name is defined in the class schema
+    const componentClassName = classComponents[localName];
+    if (!componentClassName) {
+      errors.push({
+        severity: 'error',
+        message: `Component '${localName}' is not defined in class schema for '${instance._class}'`,
         source,
         instance: instanceId
       });
       continue;
     }
 
-    // Check type if value exists
-    if (value !== undefined && value !== null && propDef.type) {
-      const result = validateType(value, propDef.type);
-      if (!result.valid) {
+    // Get the component definition
+    const componentDef = componentSchemas[componentClassName];
+    if (!componentDef) {
+      errors.push({
+        severity: 'error',
+        message: `Component class '${componentClassName}' (referenced by '${localName}') is not defined in schema`,
+        source,
+        instance: instanceId
+      });
+      continue;
+    }
+
+    // Validate properties within this component
+    const properties = componentDef?.properties || {};
+    
+    // Check required properties
+    for (const [propName, propDef] of Object.entries(properties)) {
+      const value = componentValues[propName];
+
+      // Check required
+      if (propDef.required && (value === undefined || value === null)) {
         errors.push({
           severity: 'error',
-          message: `Property '${propName}' has invalid type: ${result.error}`,
+          message: `Missing required property '${localName}.${propName}'`,
           source,
           instance: instanceId
         });
+        continue;
+      }
+
+      // Check type if value exists
+      if (value !== undefined && value !== null && propDef.type) {
+        const result = validateType(value, propDef.type);
+        if (!result.valid) {
+          errors.push({
+            severity: 'error',
+            message: `Property '${localName}.${propName}' has invalid type: ${result.error}`,
+            source,
+            instance: instanceId
+          });
+        }
+      }
+    }
+
+    // Check for undefined properties in component (strict mode - no schemaless)
+    for (const propName of Object.keys(componentValues)) {
+      if (!properties[propName]) {
+        errors.push({
+          severity: 'error',
+          message: `Property '${localName}.${propName}' is not defined in component '${componentClassName}'`,
+          source,
+          instance: instanceId
+        });
+      }
+    }
+  }
+
+  // Check that all required components have values
+  for (const [localName, componentClassName] of Object.entries(classComponents)) {
+    if (!instanceComponents[localName]) {
+      // Check if the component has required properties
+      const componentDef = componentSchemas[componentClassName];
+      if (componentDef?.properties) {
+        const hasRequired = Object.values(componentDef.properties).some(p => p.required);
+        if (hasRequired) {
+          errors.push({
+            severity: 'error',
+            message: `Missing required component '${localName}' (${componentClassName})`,
+            source,
+            instance: instanceId
+          });
+        }
       }
     }
   }
@@ -325,11 +404,38 @@ function validateCardinality(relations, relationSchemas, instancesById, errors, 
 
 /**
  * Validate schema naming conventions
- * @param {{ classes: Record<string, any>, relations: Record<string, any> }} schema
+ * @param {{ components: Record<string, any>, classes: Record<string, any>, relations: Record<string, any> }} schema
  * @param {ValidationError[]} errors
  * @param {ValidationError[]} warnings
  */
 function validateSchemaNames(schema, errors, warnings) {
+  // Check component names are ProperCase (PascalCase)
+  for (const componentName of Object.keys(schema.components || {})) {
+    if (!isProperCase(componentName)) {
+      warnings.push({
+        severity: 'warning',
+        message: `Component name '${componentName}' should be ProperCase (e.g., Identity, Contact)`,
+        source: 'schema',
+        instance: `component:${componentName}`
+      });
+    }
+    
+    // Check property names within components are camelCase
+    const componentDef = schema.components[componentName];
+    if (componentDef?.properties) {
+      for (const propName of Object.keys(componentDef.properties)) {
+        if (!isCamelCase(propName)) {
+          warnings.push({
+            severity: 'warning',
+            message: `Property name '${propName}' should be camelCase (e.g., givenName, emailAddress)`,
+            source: 'schema',
+            instance: `${componentName}.${propName}`
+          });
+        }
+      }
+    }
+  }
+
   // Check class names are ProperCase (PascalCase)
   for (const className of Object.keys(schema.classes || {})) {
     if (!isProperCase(className)) {
@@ -341,16 +447,16 @@ function validateSchemaNames(schema, errors, warnings) {
       });
     }
     
-    // Check property names are camelCase
+    // Check component local names are camelCase
     const classDef = schema.classes[className];
-    if (classDef?.properties) {
-      for (const propName of Object.keys(classDef.properties)) {
-        if (!isCamelCase(propName)) {
+    if (classDef?.components) {
+      for (const localName of Object.keys(classDef.components)) {
+        if (!isCamelCase(localName)) {
           warnings.push({
             severity: 'warning',
-            message: `Property name '${propName}' should be camelCase (e.g., givenName, emailAddress)`,
+            message: `Component local name '${localName}' should be camelCase (e.g., identity, contact)`,
             source: 'schema',
-            instance: `${className}.${propName}`
+            instance: `${className}.${localName}`
           });
         }
       }
@@ -457,7 +563,7 @@ export function validate(data) {
       continue;
     }
 
-    validateClassInstance(instance, schema.classes[className], errors, warnings);
+    validateClassInstance(instance, schema.classes[className], schema.components, errors, warnings);
   }
 
   // Validate relation instances

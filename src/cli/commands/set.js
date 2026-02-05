@@ -16,11 +16,11 @@ function showHelp() {
 ontology set - Set property values on an instance (A-box)
 
 Usage:
-  ontology set <id>:<class> <key>=<value> [<key>=<value> ...]
+  ontology set <id>:<class> <component>.<key>=<value> [...]
 
 Arguments:
-  <id>:<class>       Instance identifier (e.g., jdoe:Person)
-  <key>=<value>      Property assignments (e.g., name="John Doe")
+  <id>:<class>              Instance identifier (e.g., jdoe:Person)
+  <component>.<key>=<value> Component property assignments (e.g., identity.name="John Doe")
 
 Options:
   --help             Show this help message
@@ -29,12 +29,13 @@ Options:
 
 Description:
   Sets one or more property values on an existing class instance.
-  Values are validated against the schema if the property is defined.
+  Properties must be specified with their component prefix.
+  Values are validated against the component schema.
 
 Examples:
-  ontology set jdoe:Person name="John Doe"
-  ontology set jdoe:Person email="jdoe@company.com" active=true
-  ontology set team-zulu:Team name="Team Zulu" description="The Z team"
+  ontology set jdoe:Person identity.name="John Doe"
+  ontology set jdoe:Person contact.email="jdoe@company.com" employment.active=true
+  ontology set team-zulu:Team info.name="Team Zulu"
 `);
 }
 
@@ -52,18 +53,19 @@ function parseIdentifier(identifier) {
 }
 
 /**
- * Parse property assignment (key=value format)
+ * Parse property assignment (component.key=value format)
  * @param {string} assignment
- * @returns {{ key: string, value: any }}
+ * @returns {{ component: string, key: string, value: any }}
  */
 function parseAssignment(assignment) {
-  const match = assignment.match(/^([^=]+)=(.*)$/);
+  const match = assignment.match(/^([^.]+)\.([^=]+)=(.*)$/);
   if (!match) {
-    throw new Error(`Invalid assignment format '${assignment}'. Use format: key=value`);
+    throw new Error(`Invalid assignment format '${assignment}'. Use format: component.key=value`);
   }
   
-  const key = match[1];
-  let value = match[2];
+  const component = match[1];
+  const key = match[2];
+  let value = match[3];
   
   // Remove surrounding quotes if present
   if ((value.startsWith('"') && value.endsWith('"')) || 
@@ -73,14 +75,14 @@ function parseAssignment(assignment) {
   
   // Try to parse as boolean or number
   if (value === 'true') {
-    return { key, value: true };
+    return { component, key, value: true };
   } else if (value === 'false') {
-    return { key, value: false };
+    return { component, key, value: false };
   } else if (!isNaN(Number(value)) && value !== '') {
-    return { key, value: Number(value) };
+    return { component, key, value: Number(value) };
   }
   
-  return { key, value };
+  return { component, key, value };
 }
 
 /**
@@ -131,19 +133,22 @@ export async function handleSet(args) {
     process.exit(1);
   }
   
-  // Parse assignments
-  const assignments = {};
+  // Parse assignments - group by component
+  const componentAssignments = {};
   for (const assignArg of assignmentArgs) {
     try {
-      const { key, value } = parseAssignment(assignArg);
-      assignments[key] = value;
+      const { component, key, value } = parseAssignment(assignArg);
+      if (!componentAssignments[component]) {
+        componentAssignments[component] = {};
+      }
+      componentAssignments[component][key] = value;
     } catch (err) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
   }
   
-  if (Object.keys(assignments).length === 0) {
+  if (Object.keys(componentAssignments).length === 0) {
     console.error('Error: At least one property assignment required.');
     process.exit(1);
   }
@@ -188,8 +193,17 @@ export async function handleSet(args) {
       const instances = parsed.spec.classes;
       for (let j = 0; j < instances.length; j++) {
         if (instances[j]._id === id) {
-          // Update properties
-          Object.assign(instances[j], assignments);
+          // Initialize components if not present
+          if (!instances[j].components) {
+            instances[j].components = {};
+          }
+          // Update component properties
+          for (const [componentName, props] of Object.entries(componentAssignments)) {
+            if (!instances[j].components[componentName]) {
+              instances[j].components[componentName] = {};
+            }
+            Object.assign(instances[j].components[componentName], props);
+          }
           updated = true;
           break;
         }
@@ -220,8 +234,10 @@ export async function handleSet(args) {
   }
   
   if (!options.quiet) {
-    const propsStr = Object.entries(assignments)
-      .map(([k, v]) => `${k}=${typeof v === 'string' ? `"${v}"` : v}`)
+    const propsStr = Object.entries(componentAssignments)
+      .flatMap(([comp, props]) => 
+        Object.entries(props).map(([k, v]) => `${comp}.${k}=${typeof v === 'string' ? `"${v}"` : v}`)
+      )
       .join(', ');
     console.log(`Set ${className}:${id} ${propsStr}`);
   }

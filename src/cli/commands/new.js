@@ -30,6 +30,9 @@ Options:
 Description:
   Creates a new instance of a class in the ontology storage.
   The instance will be stored in storage/<class>-<id>.yml
+  
+  The new instance is created with an empty 'components' structure
+  based on the class schema. Use 'ontology set' to populate values.
 
 Examples:
   ontology new jdoe:Person        # Create new Person instance
@@ -68,9 +71,18 @@ function getInstanceFilePath(className, id) {
  * @param {string} className
  * @param {string} id
  * @param {string} namespace
+ * @param {Record<string, string>} classComponents - Component mapping from class schema
  * @returns {Object}
  */
-function createInstanceDocument(className, id, namespace) {
+function createInstanceDocument(className, id, namespace, classComponents) {
+  // Initialize empty components structure based on class schema
+  const components = {};
+  if (classComponents) {
+    for (const localName of Object.keys(classComponents)) {
+      components[localName] = {};
+    }
+  }
+
   return {
     apiVersion: 'agent/v1',
     kind: 'Ontology',
@@ -81,7 +93,8 @@ function createInstanceDocument(className, id, namespace) {
       classes: [
         {
           _class: className,
-          _id: id
+          _id: id,
+          components: Object.keys(components).length > 0 ? components : undefined
         }
       ]
     }
@@ -140,6 +153,10 @@ export async function handleNew(args) {
   // Get namespace from existing schema
   const namespace = [...data.schema.namespaces][0] || 'default';
   
+  // Get the class schema to know which components to initialize
+  const classSchema = data.schema.classes[className];
+  const classComponents = classSchema?.components || {};
+  
   // Create the new instance document
   const filePath = getInstanceFilePath(className, id);
   
@@ -148,7 +165,7 @@ export async function handleNew(args) {
     process.exit(1);
   }
   
-  const doc = createInstanceDocument(className, id, namespace);
+  const doc = createInstanceDocument(className, id, namespace, classComponents);
   const content = `# ${className}: ${id}\n${yaml.dump(doc, { lineWidth: -1, noRefs: true })}`;
   
   await writeFile(filePath, content, 'utf-8');

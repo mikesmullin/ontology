@@ -1,14 +1,16 @@
 # Ontology YAML Specification RFC
 
-**Version:** 1.1  
+**Version:** 2.0  
 **Status:** Draft  
-**Date:** January 18, 2026
+**Date:** February 5, 2026
 
 ---
 
 ## Abstract
 
 This document describes a proprietary YAML-based ontology specification for representing domain concepts, their properties, and relationships. The specification is inspired by Kubernetes resource files and provides a declarative way to define and manage structured knowledge as flat-file databases.
+
+**Version 2.0 introduces a component-based architecture** where properties are defined within reusable components, rather than directly on classes. This enables better composition, reuse, and stricter validation.
 
 ---
 
@@ -58,7 +60,7 @@ metadata:
 
 An ontology document can contain two main sections:
 
-1. **`schema`**: Defines classes and relation types (the "T-box")
+1. **`schema`**: Defines components, classes, and relation types (the "T-box")
 2. **`spec`**: Contains actual instances of classes and relations (the "A-box")
 
 Documents can be separated using YAML's multi-document syntax (`---`).
@@ -69,14 +71,14 @@ Documents can be separated using YAML's multi-document syntax (`---`).
 
 The schema section defines the structure of the ontology.
 
-### 3.1 Classes
+### 3.1 Components
 
-Classes represent types of entities in the domain.
+Components are reusable groups of properties that can be composed into classes.
 
 ```yaml
 schema:
-  classes:
-    ClassName:
+  components:
+    ComponentName:
       properties:
         propertyName: { type: <type>, required: <bool> }
 ```
@@ -96,66 +98,84 @@ schema:
 
 ```yaml
 schema:
-  classes:
-    Person:
+  components:
+    Identity:
       properties:
         givenName: { type: string, required: true }
         surname: { type: string, required: true }
         name: { type: string, required: true }
+    Contact:
+      properties:
         email: { type: string, required: true }
+    Employment:
+      properties:
         title: { type: string, required: true }
         active: { type: bool, required: true }
         created: { type: date, required: true }
+```
+
+### 3.2 Classes
+
+Classes represent types of entities in the domain. Classes are composed of components.
+
+```yaml
+schema:
+  classes:
+    ClassName:
+      components:
+        localName: ComponentClass
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `components` | object | No | Map of localName → ComponentClass |
+
+The `localName` is a unique identifier within the class that maps to a component class. This allows the same component type to be used multiple times with different names (e.g., `homeAddress: Address`, `workAddress: Address`).
+
+#### Example
+
+```yaml
+schema:
+  components:
+    Identity:
+      properties:
+        givenName: { type: string, required: true }
+        surname: { type: string, required: true }
+        name: { type: string, required: true }
+    Contact:
+      properties:
+        email: { type: string, required: true }
+    Employment:
+      properties:
+        title: { type: string, required: true }
+        active: { type: bool, required: true }
+        created: { type: date, required: true }
+  classes:
+    Person:
+      components:
+        identity: Identity
+        contact: Contact
+        employment: Employment
     Team: {}
     Product: {}
 ```
 
-> **Note:** Classes with no properties (e.g., `Team: {}`) are valid and serve as entity type markers.
+> **Note:** Classes with no components (e.g., `Team: {}`) are valid and serve as entity type markers.
 
-#### Hybrid Schema Model
+### 3.3 Strict Property Validation
 
-This ontology uses a **hybrid schema/schemaless** approach, similar to document databases:
+**Important:** Properties may ONLY be defined within components. There is no "schemaless" passthrough for undefined properties.
 
-| Property Definition | Behavior |
-|---------------------|----------|
-| Defined in schema (T-box) | Validated against type and required constraints |
-| NOT defined in schema | Accepted without validation (schemaless) |
+- All properties on an instance must be defined in a component
+- Properties must be grouped under their component's localName
+- The validator will reject any properties at the instance root level
 
-**Key principles:**
+This design ensures:
+- Complete schema coverage of all data
+- Consistent validation across all properties
+- Clear ownership of properties through components
 
-1. **Schema properties are validated** — If a property is defined in the class schema, instances must conform to those rules.
-
-2. **Undefined properties are passthrough** — Any property on an instance (A-box) that is NOT defined in the class schema (T-box) is still valid and stored; it simply bypasses validation.
-
-3. **Schema is opt-in validation** — Defining properties in the schema is a way to enforce constraints, not to restrict the data model.
-
-**Example:**
-
-```yaml
-# Schema (T-box) - only 'name' is validated
-schema:
-  classes:
-    Person:
-      properties:
-        name: { type: string, required: true }
-
----
-# Instance (A-box) - 'nickname' is not in schema but still valid
-spec:
-  classes:
-  - _class: Person
-    _id: jdoe
-    name: "John Doe"           # ✓ Validated (required string)
-    nickname: "Johnny"         # ✓ Accepted (no validation, schemaless)
-    favoriteColor: "blue"      # ✓ Accepted (no validation, schemaless)
-```
-
-This design allows:
-- Gradual schema evolution without breaking existing data
-- Flexibility for ad-hoc properties during exploration
-- Strict validation only where explicitly needed
-
-### 3.2 Relations
+### 3.4 Relations
 
 Relations define how classes connect to each other.
 
@@ -235,7 +255,9 @@ spec:
   classes:
   - _class: <ClassName>
     _id: <unique-identifier>
-    propertyName: value
+    components:
+      <localName>:
+        propertyName: value
     relations:
       RELATION_NAME:
       - target_id
@@ -245,8 +267,10 @@ spec:
 |-------|------|----------|-------------|
 | `_class` | string | Yes | Reference to a defined class |
 | `_id` | string | Yes | Unique identifier for this instance |
-| `<property>` | varies | Per schema | Property values as defined in schema |
+| `components` | object | Yes* | Map of localName → property values |
 | `relations` | object | No | Per-class relations (see 4.2) |
+
+*Components are required if the class has components with required properties.
 
 #### Example
 
@@ -255,13 +279,17 @@ spec:
   classes:
   - _class: Person
     _id: jdoe
-    givenName: "John"
-    surname: "Doe"
-    name: "John Doe"
-    email: "jdoe@company.com"
-    title: "Software Engineer"
-    active: true
-    created: "2015-06-12T23:46:05Z"
+    components:
+      identity:
+        givenName: "John"
+        surname: "Doe"
+        name: "John Doe"
+      contact:
+        email: "jdoe@company.com"
+      employment:
+        title: "Software Engineer"
+        active: true
+        created: "2015-06-12T23:46:05Z"
     relations:
       MEMBER_OF:
       - team-zulu
@@ -298,8 +326,13 @@ spec:
   classes:
   - _class: Person
     _id: jdoe
-    givenName: "John"
-    surname: "Doe"
+    components:
+      identity:
+        givenName: "John"
+        surname: "Doe"
+        name: "John Doe"
+      contact:
+        email: "jdoe@company.com"
     relations:
       MEMBER_OF:
       - team-zulu
@@ -308,6 +341,9 @@ spec:
 
   - _class: Team
     _id: team-zulu
+    components:
+      naming:
+        name: "Team Zulu"
     relations:
       OWNS:
       - { _to: tetris, role: "product-owner" }
@@ -378,18 +414,35 @@ kind: Ontology
 metadata:
   namespace: stormy
 schema:
-  classes:
-    Person:
+  components:
+    Identity:
       properties:
         givenName: { type: string, required: true }
         surname: { type: string, required: true }
         name: { type: string, required: true }
+    Contact:
+      properties:
         email: { type: string, required: true }
+    Employment:
+      properties:
         title: { type: string, required: true }
         active: { type: bool, required: true }
         created: { type: date, required: true }
-    Team: {}
-    Product: {}
+    Naming:
+      properties:
+        name: { type: string, required: true }
+  classes:
+    Person:
+      components:
+        identity: Identity
+        contact: Contact
+        employment: Employment
+    Team:
+      components:
+        naming: Naming
+    Product:
+      components:
+        naming: Naming
   relations:
     MEMBER_OF:
       domain: Person
@@ -419,13 +472,17 @@ spec:
   classes:
   - _class: Person
     _id: jdoe
-    givenName: "John"
-    surname: "Doe"
-    name: "John Doe"
-    email: "jdoe@company.com"
-    title: "Software Engineer"
-    active: true
-    created: "2015-06-12T23:46:05Z"
+    components:
+      identity:
+        givenName: "John"
+        surname: "Doe"
+        name: "John Doe"
+      contact:
+        email: "jdoe@company.com"
+      employment:
+        title: "Software Engineer"
+        active: true
+        created: "2015-06-12T23:46:05Z"
     relations:
       MEMBER_OF:
       - team-zulu
@@ -444,6 +501,9 @@ spec:
   classes:
   - _class: Team
     _id: team-zulu
+    components:
+      naming:
+        name: "Team Zulu"
     relations:
       OWNS:
       - { _to: tetris, role: "product-owner" }
@@ -514,21 +574,27 @@ The following field prefixes are reserved for system use:
 | `_id` | Instance identifier |
 | `_from` | Relation source |
 | `_to` | Relation target |
-| `_relation` | Relation type || `_namespace` | Namespace identifier (internal) |
+| `_relation` | Relation type |
+| `_namespace` | Namespace identifier (internal) |
 | `_source` | Source file path (internal) |
+| `components` | Reserved for component property values |
+| `relations` | Reserved for relation definitions |
 ---
 
 ## Appendix B: Grammar Summary
 
 ```
-Document     := Header (Schema | Spec)
-Header       := apiVersion kind metadata
-Schema       := schema { classes, relations }
-Spec         := spec { classes[] }
-Class        := ClassName { properties }
-Property     := name { type, required }
-Relation     := name { domain, range, cardinality, qualifiers? }
-Cardinality  := "oto" | "otm" | "mto" | "mtm"
-ClassInst    := _class, _id, ...properties, relations?
-RelationsMap := { RELATION_NAME: [target | { _to, ...qualifiers }] }
+Document      := Header (Schema | Spec)
+Header        := apiVersion kind metadata
+Schema        := schema { components?, classes, relations }
+Spec          := spec { classes[] }
+Component     := ComponentName { properties }
+Property      := name { type, required }
+Class         := ClassName { components? }
+ClassComp     := localName: ComponentClass
+Relation      := name { domain, range, cardinality, qualifiers? }
+Cardinality   := "oto" | "otm" | "mto" | "mtm"
+ClassInst     := _class, _id, components?, relations?
+CompValues    := localName: { ...propertyValues }
+RelationsMap  := { RELATION_NAME: [target | { _to, ...qualifiers }] }
 ```

@@ -55,14 +55,22 @@ Options:
 Description:
   Validates all instances in storage/*.yml against the schema (T-box).
 
+  Component-Based Validation:
+  - Properties must be defined within components (no root-level properties)
+  - Components must be declared in schema.components with their properties
+  - Classes reference components via schema.classes[].components mapping
+  - Instance values are grouped under spec.classes[].components.<localName>
+
   Checks performed:
   - apiVersion: agent/v1 is present (exact-match, required)
   - kind: Ontology is present (exact-match, required)
   - schema: or spec: is defined in each file
   - _id is unique within the namespace
   - _class reference is defined in schema
-  - Required properties are present
-  - Property types match schema (string, bool, date)
+  - Component local names match class schema definition
+  - Required component properties are present
+  - Property types match component schema (string, bool, date)
+  - No undefined properties (strict - no schemaless)
   - Relation endpoints exist
   - Relation domain/range constraints
   - Cardinality constraints

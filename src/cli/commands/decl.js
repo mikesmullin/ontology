@@ -20,9 +20,10 @@ Usage:
 
 Subcommands:
   cls <class>                              Declare a new class
+  comp <component> <key>:<type> [...]      Declare a new component with properties
   rel <class> <type> <relation> <class>    Declare a new relation
-  prop <class> <key>:<type> [...] [required]  Declare a property on a class
-  qual <rel> <key>:<type> [...] [required]    Declare a qualifier on a relation
+  prop <component> <key>:<type> [...]      Add properties to an existing component
+  qual <rel> <key>:<type> [...]            Declare a qualifier on a relation
 
 Relationship Types:
   oto   1..1   one-to-one
@@ -34,16 +35,16 @@ Options:
   --help      Show this help message
   --verbose   Show detailed output
   --quiet     Suppress output except errors
+  required    Mark property/qualifier as required
 
 Examples:
   # T-box declarations
   ontology decl cls :Person                      # Declare class Person
   ontology decl cls :Team
-  ontology decl cls :Product
-  ontology decl rel :Person otm :MEMBER_OF :Team # Declare relation
-  ontology decl rel :Team otm :OWNS :Product
-  ontology decl prop :Person name:string required   # Declare required property
-  ontology decl prop :Person email:string
+  ontology decl comp Identity name:string required  # Declare component with properties
+  ontology decl comp Contact email:string required
+  ontology decl prop Identity nickname:string       # Add property to component
+  ontology decl rel :Person otm :MEMBER_OF :Team    # Declare relation
   ontology decl qual :OWNS since:date required      # Declare qualifier
 `);
 }
@@ -323,19 +324,19 @@ async function handleDeclRelation(args, options) {
 }
 
 /**
- * Handle declaring a property
+ * Handle declaring a property on a component
  * @param {string[]} args
  * @param {Object} options
  */
 async function handleDeclProperty(args, options) {
   if (args.length < 2) {
-    console.error('Error: Property declaration requires class and property definition.');
-    console.error('Usage: ontology decl prop <class> <key>:<type> [...] [required]');
+    console.error('Error: Property declaration requires component and property definition.');
+    console.error('Usage: ontology decl prop <component> <key>:<type> [...] [required]');
     process.exit(1);
   }
   
-  const classArg = args[0];
-  const className = parseClassName(classArg);
+  const compArg = args[0];
+  const compName = parseClassName(compArg);
   const isRequired = args.includes('required');
   
   // Get all property definitions (excluding 'required' keyword)
@@ -348,10 +349,10 @@ async function handleDeclProperty(args, options) {
   
   const data = await loadAll();
   
-  // Check if class exists
-  if (!data.schema.classes[className]) {
-    console.error(`Error: Class '${className}' not defined in schema.`);
-    console.error(`Hint: Run 'ontology decl cls :${className}' first.`);
+  // Check if component exists
+  if (!data.schema.components || !data.schema.components[compName]) {
+    console.error(`Error: Component '${compName}' not defined in schema.`);
+    console.error(`Hint: Run 'ontology decl comp ${compName} <key>:<type>' first.`);
     process.exit(1);
   }
   
@@ -359,8 +360,8 @@ async function handleDeclProperty(args, options) {
   const { content, parsed } = await loadYamlFile(schemaFilePath);
   
   // Ensure properties object exists
-  if (!parsed.schema.classes[className].properties) {
-    parsed.schema.classes[className].properties = {};
+  if (!parsed.schema.components[compName].properties) {
+    parsed.schema.components[compName].properties = {};
   }
   
   const properties = [];
@@ -369,10 +370,11 @@ async function handleDeclProperty(args, options) {
       const { key, type } = parsePropertyDef(propDef);
       
       // Add property
-      parsed.schema.classes[className].properties[key] = {
-        type,
-        required: isRequired
-      };
+      const propObj = { type };
+      if (isRequired) {
+        propObj.required = true;
+      }
+      parsed.schema.components[compName].properties[key] = propObj;
       
       properties.push(key);
     } catch (err) {
@@ -399,7 +401,98 @@ async function handleDeclProperty(args, options) {
   
   if (!options.quiet) {
     const reqStr = isRequired ? ' (required)' : '';
-    console.log(`Declared properties on '${className}': ${properties.join(', ')}${reqStr}`);
+    console.log(`Declared properties on component '${compName}': ${properties.join(', ')}${reqStr}`);
+  }
+}
+
+/**
+ * Handle declaring a component
+ * @param {string[]} args
+ * @param {Object} options
+ */
+async function handleDeclComponent(args, options) {
+  if (args.length < 1) {
+    console.error('Error: Component name required.');
+    console.error('Usage: ontology decl comp <component> [key:type ...] [required]');
+    process.exit(1);
+  }
+  
+  const compArg = args[0];
+  const compName = parseClassName(compArg);
+  const isRequired = args.includes('required');
+  
+  if (!isValidClassName(compName)) {
+    console.error(`Error: Component name '${compName}' must be ProperCase (e.g., Identity, Contact).`);
+    process.exit(1);
+  }
+  
+  // Get all property definitions (excluding 'required' keyword)
+  const propDefs = args.slice(1).filter(a => a !== 'required');
+  
+  const data = await loadAll();
+  const schemaFilePath = await findSchemaFile(data);
+  
+  // Check if component already exists
+  if (data.schema.components && data.schema.components[compName]) {
+    if (!options.quiet) {
+      console.log(`Component '${compName}' already exists.`);
+    }
+    return;
+  }
+  
+  // Load and update the schema file
+  const { content, parsed } = await loadYamlFile(schemaFilePath);
+  
+  // Ensure schema.components exists
+  if (!parsed.schema) {
+    parsed.schema = {};
+  }
+  if (!parsed.schema.components) {
+    parsed.schema.components = {};
+  }
+  
+  // Create the component with properties
+  const properties = {};
+  for (const propDef of propDefs) {
+    try {
+      const { key, type } = parsePropertyDef(propDef);
+      const propObj = { type };
+      if (isRequired) {
+        propObj.required = true;
+      }
+      properties[key] = propObj;
+    } catch (err) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  }
+  
+  parsed.schema.components[compName] = { properties };
+  
+  // Write back
+  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  await writeFile(schemaFilePath, newContent, 'utf-8');
+  
+  // Validate
+  const newData = await loadAll();
+  const result = validate(newData);
+  
+  if (!result.valid) {
+    console.error('Validation failed after adding component:');
+    for (const err of result.errors) {
+      console.error(`  ✗ ${err.message}`);
+    }
+    process.exit(1);
+  }
+  
+  if (!options.quiet) {
+    const propNames = Object.keys(properties);
+    if (propNames.length > 0) {
+      const reqStr = isRequired ? ' (required)' : '';
+      console.log(`Declared component '${compName}' with properties: ${propNames.join(', ')}${reqStr}`);
+    } else {
+      console.log(`Declared component '${compName}'.`);
+    }
   }
 }
 
@@ -506,6 +599,10 @@ export async function handleDecl(args) {
   switch (subcommand) {
     case 'cls':
       await handleDeclClass(subArgs, options);
+      break;
+      
+    case 'comp':
+      await handleDeclComponent(subArgs, options);
       break;
       
     case 'rel':

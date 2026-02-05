@@ -36,7 +36,7 @@ function formatCardinalityText(cardinality) {
 
 /**
  * Print schema list in tree format
- * @param {{ classes: Record<string, any>, relations: Record<string, any>, namespaces: Set<string> }} schema
+ * @param {{ components: Record<string, any>, classes: Record<string, any>, relations: Record<string, any>, namespaces: Set<string> }} schema
  * @param {string | null} namespace
  */
 function printSchemaTree(schema, namespace) {
@@ -44,16 +44,17 @@ function printSchemaTree(schema, namespace) {
   
   console.log(`Namespace: ${ns}`);
   console.log('');
-  console.log('Classes:');
   
-  const classNames = Object.keys(schema.classes);
-  if (classNames.length === 0) {
-    console.log('  (no classes defined)');
+  // Print components
+  console.log('Components:');
+  const compNames = Object.keys(schema.components || {});
+  if (compNames.length === 0) {
+    console.log('  (no components defined)');
   } else {
-    for (const className of classNames) {
-      console.log(`  ${className}`);
-      const classDef = schema.classes[className];
-      const props = classDef?.properties || {};
+    for (const compName of compNames) {
+      console.log(`  ${compName}`);
+      const compDef = schema.components[compName];
+      const props = compDef?.properties || {};
       const propNames = Object.keys(props);
       
       if (propNames.length === 0) {
@@ -64,6 +65,31 @@ function printSchemaTree(schema, namespace) {
           const prefix = i === propNames.length - 1 ? '└──' : '├──';
           const required = prop.required ? ' (required)' : '';
           console.log(`    ${prefix} ${propName}: ${prop.type}${required}`);
+        });
+      }
+    }
+  }
+  
+  console.log('');
+  console.log('Classes:');
+  
+  const classNames = Object.keys(schema.classes);
+  if (classNames.length === 0) {
+    console.log('  (no classes defined)');
+  } else {
+    for (const className of classNames) {
+      console.log(`  ${className}`);
+      const classDef = schema.classes[className];
+      const comps = classDef?.components || {};
+      const compLocalNames = Object.keys(comps);
+      
+      if (compLocalNames.length === 0) {
+        console.log('    (no components)');
+      } else {
+        compLocalNames.forEach((localName, i) => {
+          const compClass = comps[localName];
+          const prefix = i === compLocalNames.length - 1 ? '└──' : '├──';
+          console.log(`    ${prefix} ${localName}: ${compClass}`);
         });
       }
     }
@@ -95,7 +121,7 @@ function printSchemaTree(schema, namespace) {
 
 /**
  * Print schema list as JSON
- * @param {{ classes: Record<string, any>, relations: Record<string, any>, namespaces: Set<string> }} schema
+ * @param {{ components: Record<string, any>, classes: Record<string, any>, relations: Record<string, any>, namespaces: Set<string> }} schema
  * @param {string | null} namespace
  */
 function printSchemaJson(schema, namespace) {
@@ -103,6 +129,7 @@ function printSchemaJson(schema, namespace) {
   
   const output = {
     namespace: ns,
+    components: schema.components,
     classes: schema.classes,
     relations: schema.relations
   };
@@ -129,7 +156,7 @@ async function handleSchemaList(args) {
 /**
  * Get class definition with related relations
  * @param {string} name
- * @param {{ classes: Record<string, any>, relations: Record<string, any>, namespaces: Set<string> }} schema
+ * @param {{ components: Record<string, any>, classes: Record<string, any>, relations: Record<string, any>, namespaces: Set<string> }} schema
  */
 function getClassDetails(name, schema) {
   const classDef = schema.classes[name];
@@ -150,7 +177,7 @@ function getClassDetails(name, schema) {
   return {
     type: 'class',
     name,
-    properties: classDef.properties || {},
+    components: classDef.components || {},
     relationsAsDomain,
     relationsAsRange
   };
@@ -176,24 +203,38 @@ function getRelationDetails(name, schema) {
  * Print class details in tree format
  * @param {Object} details
  * @param {string} namespace
+ * @param {Record<string, any>} componentSchemas
  */
-function printClassTree(details, namespace) {
+function printClassTree(details, namespace, componentSchemas) {
   console.log(`Class: ${details.name}`);
   console.log(`Namespace: ${namespace}`);
   console.log('');
-  console.log('Properties:');
+  console.log('Components:');
   
-  const props = details.properties;
-  const propNames = Object.keys(props);
+  const comps = details.components;
+  const compLocalNames = Object.keys(comps);
   
-  if (propNames.length === 0) {
-    console.log('  (no properties defined)');
+  if (compLocalNames.length === 0) {
+    console.log('  (no components)');
   } else {
-    propNames.forEach((propName, i) => {
-      const prop = props[propName];
-      const prefix = i === propNames.length - 1 ? '└──' : '├──';
-      const required = prop.required ? ' (required)' : '';
-      console.log(`  ${prefix} ${propName}: ${prop.type}${required}`);
+    compLocalNames.forEach((localName, i) => {
+      const compClass = comps[localName];
+      const prefix = i === compLocalNames.length - 1 ? '└──' : '├──';
+      console.log(`  ${prefix} ${localName}: ${compClass}`);
+      
+      // Show properties from component class
+      const compDef = componentSchemas[compClass];
+      if (compDef?.properties) {
+        const props = compDef.properties;
+        const propNames = Object.keys(props);
+        propNames.forEach((propName, j) => {
+          const prop = props[propName];
+          const propPrefix = j === propNames.length - 1 ? '└──' : '├──';
+          const indent = i === compLocalNames.length - 1 ? '      ' : '  │   ';
+          const required = prop.required ? ' (required)' : '';
+          console.log(`${indent}${propPrefix} ${propName}: ${prop.type}${required}`);
+        });
+      }
     });
   }
   
@@ -298,7 +339,7 @@ async function handleSchemaGet(args) {
   if (json) {
     printDetailsJson(details, ns);
   } else if (details.type === 'class') {
-    printClassTree(details, ns);
+    printClassTree(details, ns, schema.components || {});
   } else {
     printRelationTree(details, ns);
   }

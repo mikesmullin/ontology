@@ -4,13 +4,18 @@
 
 /**
  * @typedef {Object} PropertyDef
- * @property {'string' | 'bool' | 'date'} type
+ * @property {'string' | 'bool' | 'date' | 'string[]' | 'bool[]' | 'date[]'} type
  * @property {boolean} [required]
  */
 
 /**
- * @typedef {Object} ClassDef
+ * @typedef {Object} ComponentDef
  * @property {Record<string, PropertyDef>} [properties]
+ */
+
+/**
+ * @typedef {Object} ClassDef
+ * @property {Record<string, string>} [components] - Map of localName -> ComponentClass
  */
 
 /**
@@ -39,6 +44,7 @@
 
 /**
  * @typedef {Object} OntologySchema
+ * @property {Record<string, ComponentDef>} [components]
  * @property {Record<string, ClassDef>} [classes]
  * @property {Record<string, RelationDef>} [relations]
  */
@@ -64,6 +70,7 @@
  * @property {string} _id
  * @property {string} [_namespace]
  * @property {string} [_source]
+ * @property {Record<string, Record<string, any>>} [components] - Map of localName -> property values
  * @property {*} [key: string]
  */
 
@@ -79,6 +86,7 @@
 
 /**
  * @typedef {Object} LoadedSchema
+ * @property {Record<string, ComponentDef>} components
  * @property {Record<string, ClassDef>} classes
  * @property {Record<string, RelationDef>} relations
  * @property {Set<string>} namespaces

@@ -15,23 +15,26 @@ ontology get - Get instance data or class schema
 
 Usage:
   ontology get <identifier> [options]
-  ontology get cls [<class>] [prop] [rel] [...]
+  ontology get cls [<class>] [comp] [rel] [...]
 
 Instance Mode:
   ontology get <id>              Get instance by ID with its relations
 
 Class Schema Mode:
   ontology get cls                         List all class identifiers
-  ontology get cls <class>                 Print class schema with all props/rels
-  ontology get cls <class> prop            Print class with properties only
-  ontology get cls <class> prop name email Print specific properties
+  ontology get cls <class>                 Print class schema with all components/rels
+  ontology get cls <class> comp            Print class with components only
+  ontology get cls <class> comp identity   Print specific component local names
   ontology get cls <class> rel             Print class with relations only
   ontology get cls <class> rel memberOf    Print specific relations
-  ontology get cls <class> prop name rel memberOf  Print specific props and rels
 
 Relation Schema Mode:
   ontology get rel                         List all relation identifiers
   ontology get rel [relN...]               Print specific relation schemas
+
+Component Schema Mode:
+  ontology get comp                        List all component class names
+  ontology get comp <component>            Print component schema with properties
 
 Options:
   --help           Show this help message
@@ -41,8 +44,8 @@ Options:
 Examples:
   ontology get jdoe              # Get Person:jdoe instance
   ontology get cls               # List all class names
-  ontology get cls Person        # Get Person class schema
-  ontology get cls Person prop   # Get Person properties
+  ontology get cls Person        # Get Person class schema (with components)
+  ontology get comp Identity     # Get Identity component schema
   ontology get rel memberOf      # Get memberOf relation schema
 `);
 }
@@ -156,20 +159,20 @@ async function handleGetClass(args, options) {
   
   // Parse what to show
   const showAll = args.length === 1;
-  const propIndex = args.indexOf('prop');
+  const compIndex = args.indexOf('comp');
   const relIndex = args.indexOf('rel');
   
-  let showProps = showAll || propIndex !== -1;
+  let showComps = showAll || compIndex !== -1;
   let showRels = showAll || relIndex !== -1;
   
-  // Get specific props/rels to show
-  let specificProps = [];
+  // Get specific components/rels to show
+  let specificComps = [];
   let specificRels = [];
   
-  if (propIndex !== -1) {
-    // Get all args after 'prop' until 'rel' or end
-    const endIndex = relIndex !== -1 && relIndex > propIndex ? relIndex : args.length;
-    specificProps = args.slice(propIndex + 1, endIndex);
+  if (compIndex !== -1) {
+    // Get all args after 'comp' until 'rel' or end
+    const endIndex = relIndex !== -1 && relIndex > compIndex ? relIndex : args.length;
+    specificComps = args.slice(compIndex + 1, endIndex);
   }
   
   if (relIndex !== -1) {
@@ -179,22 +182,29 @@ async function handleGetClass(args, options) {
   
   console.log(`Class: ${className}`);
   
-  if (showProps) {
+  if (showComps) {
     console.log('');
-    console.log('Properties:');
-    const props = classDef.properties || {};
-    const propNames = specificProps.length > 0 ? specificProps : Object.keys(props);
+    console.log('Components:');
+    const comps = classDef.components || {};
+    const compNames = specificComps.length > 0 ? specificComps : Object.keys(comps);
     
-    if (propNames.length === 0 || Object.keys(props).length === 0) {
-      console.log('  (no properties defined)');
+    if (compNames.length === 0 || Object.keys(comps).length === 0) {
+      console.log('  (no components defined)');
     } else {
-      for (const propName of propNames) {
-        const prop = props[propName];
-        if (prop) {
-          const required = prop.required ? ' (required)' : '';
-          console.log(`  ${propName}: ${prop.type}${required}`);
+      for (const localName of compNames) {
+        const componentClass = comps[localName];
+        if (componentClass) {
+          console.log(`  ${localName}: ${componentClass}`);
+          // Show properties from the component class
+          const compDef = schema.components?.[componentClass];
+          if (compDef?.properties) {
+            for (const [propName, propDef] of Object.entries(compDef.properties)) {
+              const required = propDef.required ? ' (required)' : '';
+              console.log(`    .${propName}: ${propDef.type}${required}`);
+            }
+          }
         } else {
-          console.log(`  ${propName}: (not defined)`);
+          console.log(`  ${localName}: (not defined)`);
         }
       }
     }
@@ -281,6 +291,51 @@ async function handleGetRelation(args, options) {
       for (const [qName, qDef] of Object.entries(rel.qualifiers)) {
         const required = qDef.required ? ' (required)' : '';
         console.log(`    ${qName}: ${qDef.type}${required}`);
+      }
+    }
+    console.log('');
+  }
+}
+
+/**
+ * Handle get comp subcommand
+ * @param {string[]} args
+ * @param {Object} options
+ */
+async function handleGetComponent(args, options) {
+  const schema = await loadSchema();
+  
+  // No component specified - list all component class names
+  if (args.length === 0) {
+    const compNames = Object.keys(schema.components || {});
+    if (compNames.length === 0) {
+      console.log('(no components defined)');
+    } else {
+      for (const name of compNames) {
+        console.log(name);
+      }
+    }
+    return;
+  }
+  
+  // Print specific components
+  for (const compName of args) {
+    const comp = schema.components?.[compName];
+    
+    if (!comp) {
+      console.error(`Error: Component '${compName}' not found.`);
+      continue;
+    }
+    
+    console.log(`Component: ${compName}`);
+    console.log('Properties:');
+    const props = comp.properties || {};
+    if (Object.keys(props).length === 0) {
+      console.log('  (no properties defined)');
+    } else {
+      for (const [propName, propDef] of Object.entries(props)) {
+        const required = propDef.required ? ' (required)' : '';
+        console.log(`  ${propName}: ${propDef.type}${required}`);
       }
     }
     console.log('');
@@ -380,6 +435,11 @@ export async function handleGet(args) {
 
   if (firstArg === 'rel') {
     await handleGetRelation(restArgs, options);
+    return;
+  }
+
+  if (firstArg === 'comp') {
+    await handleGetComponent(restArgs, options);
     return;
   }
 
