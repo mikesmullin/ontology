@@ -2,7 +2,7 @@
  * New Command Handler - Create new A-box instances
  */
 
-import { loadAll, getStoragePath } from '../../core/loader.js';
+import { loadAll, getStoragePath, PROJECT_ROOT } from '../../core/loader.js';
 import { validate } from '../../core/validator.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -184,7 +184,7 @@ export async function handleNew(args) {
   }
   
   if (!options.quiet) {
-    const relPath = filePath.replace(process.cwd() + '/', '');
+    const relPath = filePath.replace(PROJECT_ROOT + '/', '');
     console.log(`Created ${className}:${id} in ${relPath}`);
   }
 }

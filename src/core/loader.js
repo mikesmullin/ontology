@@ -19,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Project root is two levels up from src/core/
-const PROJECT_ROOT = resolve(__dirname, '..', '..');
+export const PROJECT_ROOT = resolve(__dirname, '..', '..');
 
 /**
  * Get the storage directory path
@@ -153,7 +153,7 @@ function extractPerClassRelations(instance, namespace, relativePath) {
 function extractInstances(docs, filePath) {
   const classes = [];
   const relations = [];
-  const relativePath = filePath.replace(process.cwd() + '/', '');
+  const relativePath = filePath.replace(PROJECT_ROOT + '/', '');
 
   for (const doc of docs) {
     if (doc.apiVersion !== 'agent/v1' || doc.kind !== 'Ontology') continue;
@@ -205,7 +205,7 @@ export async function loadAll(customPath) {
 
   for (const filePath of files) {
     const docs = await parseYamlFile(filePath);
-    const relativePath = filePath.replace(process.cwd() + '/', '');
+    const relativePath = filePath.replace(PROJECT_ROOT + '/', '');
     
     result.files.push(relativePath);
 
