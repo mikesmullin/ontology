@@ -520,6 +520,9 @@ export function validate(data) {
   // Validate that spec.relations is not used (only per-class relations allowed)
   validateNoTopLevelRelations(rawDocuments || [], errors, warnings);
 
+  // Validate relation target format (must be string or object with _to)
+  validateRelationTargetFormat(rawDocuments || [], errors, warnings);
+
   // Validate schema naming conventions
   validateSchemaNames(schema, errors, warnings);
 
@@ -655,6 +658,80 @@ function validateNoTopLevelRelations(rawDocuments, errors, warnings) {
         source,
         instance: 'spec.relations'
       });
+    }
+  }
+}
+
+/**
+ * Validate relation target format within class instances
+ * Targets must be either:
+ * - A string (simple ID reference)
+ * - An object with '_to' key (qualified relation with qualifiers)
+ * 
+ * Invalid formats like { _id: 'x', _class: 'Y' } are rejected.
+ * 
+ * @param {{ source: string, document: any }[]} rawDocuments
+ * @param {ValidationError[]} errors
+ * @param {ValidationError[]} warnings
+ */
+function validateRelationTargetFormat(rawDocuments, errors, warnings) {
+  for (const { source, document } of rawDocuments) {
+    const classes = document?.spec?.classes;
+    if (!Array.isArray(classes)) continue;
+
+    for (const instance of classes) {
+      if (!instance?.relations || typeof instance.relations !== 'object') continue;
+
+      const instanceId = instance._id || 'unknown';
+      const instanceClass = instance._class || 'unknown';
+
+      for (const [relationName, targets] of Object.entries(instance.relations)) {
+        if (!Array.isArray(targets)) continue;
+
+        for (let i = 0; i < targets.length; i++) {
+          const target = targets[i];
+
+          if (typeof target === 'string') {
+            // Valid: simple ID string
+            continue;
+          }
+
+          if (typeof target === 'object' && target !== null) {
+            if (target._to) {
+              // Valid: object with _to (qualified relation)
+              continue;
+            }
+
+            // Invalid: object without _to
+            const keys = Object.keys(target);
+            const hasIdOrClass = keys.includes('_id') || keys.includes('_class');
+            
+            if (hasIdOrClass) {
+              errors.push({
+                severity: 'error',
+                message: `Invalid relation target format in '${relationName}[${i}]': object has '_id'/'_class' but should be a simple ID string or use '_to' for qualified relations`,
+                source,
+                instance: `${instanceClass}:${instanceId}`
+              });
+            } else {
+              errors.push({
+                severity: 'error',
+                message: `Invalid relation target format in '${relationName}[${i}]': object must have '_to' key for qualified relations, or use a simple ID string`,
+                source,
+                instance: `${instanceClass}:${instanceId}`
+              });
+            }
+          } else {
+            // Invalid: not a string or object
+            errors.push({
+              severity: 'error',
+              message: `Invalid relation target format in '${relationName}[${i}]': expected string or object with '_to', got ${typeof target}`,
+              source,
+              instance: `${instanceClass}:${instanceId}`
+            });
+          }
+        }
+      }
     }
   }
 }
