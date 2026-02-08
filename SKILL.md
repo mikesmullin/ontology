@@ -10,6 +10,7 @@ If I say `ETL <employee>` (ie. `ETL jdoe`) then that means to perform this skill
 ### Schema
 
 We utilize a proprietary schema, inspired by Kubernetes (YAML) resource files.
+Properties are defined within reusable **components**, which are then attached to **classes**.
 An example follows:
 
 ```yml
@@ -19,18 +20,35 @@ kind: Ontology
 metadata:
   namespace: stormy
 schema:
-  classes:
-    Person:
+  components:
+    Identity:
       properties:
         givenName: { type: string, required: true }
         surname: { type: string, required: true }
         name: { type: string, required: true }
+    Contact:
+      properties:
         email: { type: string, required: true }
+    Employment:
+      properties:
         title: { type: string, required: true }
         active: { type: bool, required: true }
         created: { type: date, required: true }
-    Team: {}
-    Product: {}
+    Naming:
+      properties:
+        name: { type: string, required: true }
+  classes:
+    Person:
+      components:
+        identity: Identity
+        contact: Contact
+        employment: Employment
+    Team:
+      components:
+        naming: Naming
+    Product:
+      components:
+        naming: Naming
   relations:
     MEMBER_OF:
       domain: Person
@@ -57,6 +75,9 @@ spec:
   classes:
   - _class: Product
     _id: tetris
+    components:
+      naming:
+        name: "Tetris"
 ```
 
 ### Gathering Data
@@ -119,13 +140,17 @@ spec:
   classes:
   - _class: Person
     _id: jdoe
-    givenName: "John"
-    surname: "Doe"
-    name: "John Doe"
-    email: "jdoe@company.com"
-    title: "Software Engineer"
-    active: true
-    created: "2015-06-12T23:46:05Z"
+    components:
+      identity:
+        givenName: "John"
+        surname: "Doe"
+        name: "John Doe"
+      contact:
+        email: "jdoe@company.com"
+      employment:
+        title: "Software Engineer"
+        active: true
+        created: "2015-06-12T23:46:05Z"
     relations:
       MEMBER_OF:
       - team-zulu
@@ -169,12 +194,40 @@ else, we (recurse to) lookup the manager, and create his file `storage/person-ms
 
 ### Using the Ontology CLI
 
-The `ontology` CLI tool provides commands to search and inspect the ontology data.
+The `ontology` CLI tool provides commands to manage both schema (T-box) and instances (A-box).
 
-- read `README.md` (or run the `ontology` tool, to see help) to understand how to use this tool for:
-  - validation/linting Ontology YAML files
-  - searching Ontology YAML database
-  - etc.
+Run `ontology --help` for the full command list. Key commands:
 
+#### T-box (Schema) Commands
+```bash
+ontology decl cls :ClassName                        # Declare a new class
+ontology decl comp ComponentName key:type [required] # Declare a new component with properties
+ontology decl cmp :Class local:Component [...]       # Attach components to a class
+ontology decl rel :Domain mtm :REL_NAME :Range       # Declare a relation
+ontology decl prop Component key:type [required]     # Add properties to existing component
+ontology decl qual :REL_NAME key:type [required]     # Add qualifiers to a relation
+```
+
+#### A-box (Instance) Commands
+```bash
+ontology new id:Class comp.key=value [...]    # Create instance with inline properties
+ontology set id:Class comp.key=value          # Set properties on existing instance
+ontology link from:Class REL_NAME to:Class    # Create a relation between instances
+ontology get id                               # Get instance with its relations
+```
+
+#### Query Commands
+```bash
+ontology search "query"       # Search instances
+ontology graph -d 2 id        # Visualize relationship graph
+ontology schema list           # List all classes, components, and relations
+ontology schema get Name       # Print schema for a class, component, or relation
+ontology validate              # Validate all instances against schema
+```
+
+#### Tips
+- The `new` command supports inline property setting: `ontology new myid:Class naming.name="My Name"` — this avoids validation failures from missing required fields.
+- The `decl cmp` command attaches existing components to a class: e.g., `ontology decl cmp :Service naming:Naming documentation:Documentation`
+- All schema/instance-mutating commands validate after write and roll back on failure.
 
 IMPORTANT: Whenever you make changes to the `storage/*.yml`, run `ontology validate` to confirm the changes are correct.

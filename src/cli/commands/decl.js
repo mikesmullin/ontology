@@ -3,7 +3,7 @@
  */
 
 import { loadAll, getStoragePath } from '../../core/loader.js';
-import { validate } from '../../core/validator.js';
+import { safeWrite } from '../../core/safe-write.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import yaml from 'js-yaml';
@@ -21,6 +21,7 @@ Usage:
 Subcommands:
   cls <class>                              Declare a new class
   comp <component> <key>:<type> [...]      Declare a new component with properties
+  cmp <class> <local>:<Component> [...]    Attach components to a class
   rel <class> <type> <relation> <class>    Declare a new relation
   prop <component> <key>:<type> [...]      Add properties to an existing component
   qual <rel> <key>:<type> [...]            Declare a qualifier on a relation
@@ -198,13 +199,9 @@ async function handleDeclClass(args, options) {
   // Add the new class (empty definition)
   parsed.schema.classes[className] = {};
   
-  // Write back
+  // Write back with validation rollback
   const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
-  await writeFile(schemaFilePath, newContent, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
     console.error('Validation failed after adding class:');
@@ -302,13 +299,9 @@ async function handleDeclRelation(args, options) {
     cardinality
   };
   
-  // Write back
+  // Write back with validation rollback
   const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
-  await writeFile(schemaFilePath, newContent, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
     console.error('Validation failed after adding relation:');
@@ -383,13 +376,9 @@ async function handleDeclProperty(args, options) {
     }
   }
   
-  // Write back
+  // Write back with validation rollback
   const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
-  await writeFile(schemaFilePath, newContent, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
     console.error('Validation failed after adding property:');
@@ -469,13 +458,9 @@ async function handleDeclComponent(args, options) {
   
   parsed.schema.components[compName] = { properties };
   
-  // Write back
+  // Write back with validation rollback
   const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
-  await writeFile(schemaFilePath, newContent, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
     console.error('Validation failed after adding component:');
@@ -555,13 +540,9 @@ async function handleDeclQualifier(args, options) {
     }
   }
   
-  // Write back
+  // Write back with validation rollback
   const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
-  await writeFile(schemaFilePath, newContent, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
     console.error('Validation failed after adding qualifier:');
@@ -574,6 +555,82 @@ async function handleDeclQualifier(args, options) {
   if (!options.quiet) {
     const reqStr = isRequired ? ' (required)' : '';
     console.log(`Declared qualifiers on '${relName}': ${qualifiers.join(', ')}${reqStr}`);
+  }
+}
+
+/**
+ * Handle attaching components to a class
+ * @param {string[]} args
+ * @param {Object} options
+ */
+async function handleDeclClassComponent(args, options) {
+  if (args.length < 2) {
+    console.error('Error: Class and component mapping required.');
+    console.error('Usage: ontology decl cmp <class> <localName>:<ComponentClass> [...]');
+    process.exit(1);
+  }
+
+  const classArg = args[0];
+  const className = parseClassName(classArg);
+
+  const mappings = args.slice(1);
+
+  const data = await loadAll();
+
+  // Check if class exists
+  if (!data.schema.classes[className]) {
+    console.error(`Error: Class '${className}' not defined in schema.`);
+    console.error(`Hint: Run 'ontology decl cls :${className}' first.`);
+    process.exit(1);
+  }
+
+  // Parse and validate mappings
+  const parsed_mappings = [];
+  for (const mapping of mappings) {
+    const [localName, compClass] = mapping.split(':');
+    if (!localName || !compClass) {
+      console.error(`Error: Invalid component mapping '${mapping}'. Use format: localName:ComponentClass`);
+      process.exit(1);
+    }
+    if (!data.schema.components || !data.schema.components[compClass]) {
+      console.error(`Error: Component '${compClass}' not defined in schema.`);
+      console.error(`Hint: Run 'ontology decl comp ${compClass} <key>:<type>' first.`);
+      process.exit(1);
+    }
+    parsed_mappings.push({ localName, compClass });
+  }
+
+  const schemaFilePath = await findSchemaFile(data);
+  const { content, parsed } = await loadYamlFile(schemaFilePath);
+
+  // Ensure class has components object
+  if (!parsed.schema.classes[className] || typeof parsed.schema.classes[className] !== 'object') {
+    parsed.schema.classes[className] = {};
+  }
+  if (!parsed.schema.classes[className].components) {
+    parsed.schema.classes[className].components = {};
+  }
+
+  const attached = [];
+  for (const { localName, compClass } of parsed_mappings) {
+    parsed.schema.classes[className].components[localName] = compClass;
+    attached.push(`${localName}: ${compClass}`);
+  }
+
+  // Write back with validation rollback
+  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const result = await safeWrite(schemaFilePath, newContent);
+
+  if (!result.valid) {
+    console.error('Validation failed after attaching components:');
+    for (const err of result.errors) {
+      console.error(`  ✗ ${err.message}`);
+    }
+    process.exit(1);
+  }
+
+  if (!options.quiet) {
+    console.log(`Attached components to '${className}': ${attached.join(', ')}`);
   }
 }
 
@@ -603,6 +660,10 @@ export async function handleDecl(args) {
       
     case 'comp':
       await handleDeclComponent(subArgs, options);
+      break;
+
+    case 'cmp':
+      await handleDeclClassComponent(subArgs, options);
       break;
       
     case 'rel':

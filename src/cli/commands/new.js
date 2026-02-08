@@ -3,7 +3,7 @@
  */
 
 import { loadAll, getStoragePath, PROJECT_ROOT } from '../../core/loader.js';
-import { validate } from '../../core/validator.js';
+import { safeWrite } from '../../core/safe-write.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import yaml from 'js-yaml';
@@ -72,15 +72,24 @@ function getInstanceFilePath(className, id) {
  * @param {string} id
  * @param {string} namespace
  * @param {Record<string, string>} classComponents - Component mapping from class schema
+ * @param {Array<{comp: string, key: string, value: string}>} initialValues - Initial property values
  * @returns {Object}
  */
-function createInstanceDocument(className, id, namespace, classComponents) {
+function createInstanceDocument(className, id, namespace, classComponents, initialValues = []) {
   // Initialize empty components structure based on class schema
   const components = {};
   if (classComponents) {
     for (const localName of Object.keys(classComponents)) {
       components[localName] = {};
     }
+  }
+
+  // Apply initial values
+  for (const { comp, key, value } of initialValues) {
+    if (!components[comp]) {
+      components[comp] = {};
+    }
+    components[comp][key] = value;
   }
 
   return {
@@ -117,7 +126,46 @@ export async function handleNew(args) {
   };
   
   // Get the identifier (filter out flags)
-  const identifier = args.find(a => !a.startsWith('-'));
+  const cleanArgs = args.filter(a => !a.startsWith('-'));
+  const identifier = cleanArgs[0];
+  
+  // Parse inline property setters (comp.key=value)
+  const initialValues = [];
+  for (const arg of cleanArgs.slice(1)) {
+    const eqIdx = arg.indexOf('=');
+    if (eqIdx === -1) continue;
+    const path = arg.slice(0, eqIdx);
+    let value = arg.slice(eqIdx + 1);
+    const dotIdx = path.indexOf('.');
+    if (dotIdx === -1) {
+      console.error(`Error: Property '${path}' must be in comp.key format.`);
+      process.exit(1);
+    }
+    // Strip surrounding quotes
+    if ((value.startsWith('"') && value.endsWith('"')) || 
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    // Parse array syntax: [val1, val2]
+    if (typeof value === 'string' && value.startsWith('[') && value.endsWith(']')) {
+      const inner = value.slice(1, -1).trim();
+      value = inner === '' ? [] : inner.split(',').map(item => {
+        item = item.trim();
+        if ((item.startsWith('"') && item.endsWith('"')) || 
+            (item.startsWith("'") && item.endsWith("'"))) {
+          item = item.slice(1, -1);
+        }
+        return item;
+      });
+    } else if (value === 'true') {
+      value = true;
+    } else if (value === 'false') {
+      value = false;
+    }
+    const comp = path.slice(0, dotIdx);
+    const key = path.slice(dotIdx + 1);
+    initialValues.push({ comp, key, value });
+  }
   
   if (!identifier) {
     console.error('Error: Instance identifier required.');
@@ -165,21 +213,17 @@ export async function handleNew(args) {
     process.exit(1);
   }
   
-  const doc = createInstanceDocument(className, id, namespace, classComponents);
+  const doc = createInstanceDocument(className, id, namespace, classComponents, initialValues);
   const content = `# ${className}: ${id}\n${yaml.dump(doc, { lineWidth: -1, noRefs: true })}`;
   
-  await writeFile(filePath, content, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  // Write with validation rollback
+  const result = await safeWrite(filePath, content, { isNew: true });
   
   if (!result.valid) {
     console.error('Validation failed after creating instance:');
     for (const err of result.errors) {
       console.error(`  ✗ ${err.message}`);
     }
-    // Note: We don't delete the file, let user fix it
     process.exit(1);
   }
   

@@ -3,7 +3,7 @@
  */
 
 import { loadAll, getStoragePath } from '../../core/loader.js';
-import { validate } from '../../core/validator.js';
+import { safeWrite } from '../../core/safe-write.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import yaml from 'js-yaml';
@@ -232,13 +232,9 @@ export async function handleLink(args) {
     process.exit(1);
   }
   
-  // Write back (multi-document)
+  // Write back (multi-document) with validation rollback
   const newContent = docs.map(d => yaml.dump(d, { lineWidth: -1, noRefs: true })).join('---\n');
-  await writeFile(filePath, newContent, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  const result = await safeWrite(filePath, newContent);
   
   if (!result.valid) {
     console.error('Validation failed after creating relation:');

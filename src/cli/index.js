@@ -8,9 +8,11 @@ import { handleValidate } from './commands/validate.js';
 import { handleGet } from './commands/get.js';
 import { handleGraph } from './commands/graph.js';
 import { handleDecl } from './commands/decl.js';
+import { handleUndecl } from './commands/undecl.js';
 import { handleNew } from './commands/new.js';
 import { handleLink } from './commands/link.js';
 import { handleSet } from './commands/set.js';
+import { handleRm } from './commands/rm.js';
 
 const VERSION = '1.1.0';
 
@@ -27,14 +29,22 @@ Usage:
 T-box Commands (Schema):
   decl cls <class>                         Declare a new class
   decl comp <component> <key>:<type> [...] Declare a new component with properties
+  decl cmp <class> <local>:<Component>     Attach components to a class
   decl rel <class> <type> <rel> <class>    Declare a new relation
   decl prop <component> <key>:<type> [...]   Add properties to a component
   decl qual <rel> <key>:<type> [...]       Declare qualifiers on a relation
+  undecl cls <class>                       Remove a class from schema
+  undecl comp <component>                  Remove a component from schema
+  undecl cmp <class> <local>               Remove component attachment from class
+  undecl rel <class> <rel> <class>         Remove a relation
+  undecl prop <component> <key>            Remove a property from component
+  undecl qual <rel> <key>                  Remove a qualifier from relation
 
 A-box Commands (Instances):
   new <id>:<class>                         Create a new instance
   link <from>:<class> <rel> <to>:<class>   Create a relation between instances
   set <id>:<class> <comp>.<key>=<value>    Set component properties on an instance
+  rm <id> [<id> ...]                       Remove instances
   get <id>                                 Get instance with its relations
 
 Query Commands:
@@ -55,10 +65,16 @@ Examples:
   ontology decl comp :Identity givenName:string surname:string name:string
   ontology decl rel :Person otm :MEMBER_OF :Team
 
+  # Remove schema elements
+  ontology undecl cls Location                   # Remove Location class
+  ontology undecl rel :Process mto :RUNS_ON :Location  # Remove relation
+
   # A-box (instance) operations
   ontology new jdoe:Person
   ontology set jdoe:Person identity.name="John Doe"
   ontology link jdoe:Person memberOf team-zulu:Team
+  ontology rm jdoe                        # Remove instance
+  ontology rm jdoe pgufler --force         # Remove multiple instances
 
   # Queries
   ontology search "name=John"
@@ -147,6 +163,10 @@ export async function run(args) {
         await handleDecl(commandArgs);
         break;
 
+      case 'undecl':
+        await handleUndecl(commandArgs);
+        break;
+
       case 'new':
         await handleNew(commandArgs);
         break;
@@ -157,6 +177,10 @@ export async function run(args) {
 
       case 'set':
         await handleSet(commandArgs);
+        break;
+
+      case 'rm':
+        await handleRm(commandArgs);
         break;
 
       default:

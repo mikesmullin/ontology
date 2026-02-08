@@ -3,7 +3,7 @@
  */
 
 import { loadAll, getStoragePath } from '../../core/loader.js';
-import { validate } from '../../core/validator.js';
+import { safeWrite } from '../../core/safe-write.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import yaml from 'js-yaml';
@@ -71,6 +71,24 @@ function parseAssignment(assignment) {
   if ((value.startsWith('"') && value.endsWith('"')) || 
       (value.startsWith("'") && value.endsWith("'"))) {
     value = value.slice(1, -1);
+  }
+  
+  // Check for array syntax: [val1, val2, val3] or [val1,val2,val3]
+  if (value.startsWith('[') && value.endsWith(']')) {
+    const inner = value.slice(1, -1).trim();
+    if (inner === '') {
+      return { component, key, value: [] };
+    }
+    const items = inner.split(',').map(item => {
+      item = item.trim();
+      // Strip quotes from individual items
+      if ((item.startsWith('"') && item.endsWith('"')) || 
+          (item.startsWith("'") && item.endsWith("'"))) {
+        item = item.slice(1, -1);
+      }
+      return item;
+    });
+    return { component, key, value: items };
   }
   
   // Try to parse as boolean or number
@@ -217,13 +235,9 @@ export async function handleSet(args) {
     process.exit(1);
   }
   
-  // Write back (multi-document)
+  // Write back (multi-document) with validation rollback
   const newContent = docs.map(d => yaml.dump(d, { lineWidth: -1, noRefs: true })).join('---\n');
-  await writeFile(filePath, newContent, 'utf-8');
-  
-  // Validate
-  const newData = await loadAll();
-  const result = validate(newData);
+  const result = await safeWrite(filePath, newContent);
   
   if (!result.valid) {
     console.error('Validation failed after setting properties:');
