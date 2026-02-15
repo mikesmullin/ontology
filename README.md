@@ -69,3 +69,11 @@ bun link
 ```bash
 ontology --help
 ```
+
+## Obsidian-Compatible Storage
+
+- Instances can be stored as Markdown notes with YAML frontmatter.
+- Canonical path format for new notes is `storage/<Class>/<id>.md`.
+- Use wiki-style links in markdown body like `[[Person/msmullin]]`.
+- Each `[[Class/id]]` link is interpreted as an implicit one-way `LINKS_TO` relation.
+- `LINKS_TO` is a reserved system relation (implicit, wildcard domain/range, non-overridable).

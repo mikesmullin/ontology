@@ -53,7 +53,7 @@ Options:
   --help           Show this help message
 
 Description:
-  Validates all instances in storage/*.yml against the schema (T-box).
+  Validates all ontology files in storage/**/*.{yml,yaml,md} against the schema (T-box).
 
   Component-Based Validation:
   - Properties must be defined within components (no root-level properties)
@@ -73,6 +73,7 @@ Description:
   - No undefined properties (strict - no schemaless)
   - Relation endpoints exist
   - Relation domain/range constraints
+  - Implicit LINKS_TO relations extracted from [[Class/id]] wiki links
   - Cardinality constraints
 
 Examples:

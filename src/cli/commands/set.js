@@ -4,9 +4,9 @@
 
 import { loadAll, getStoragePath } from '../../core/loader.js';
 import { safeWrite } from '../../core/safe-write.js';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
-import yaml from 'js-yaml';
+import { parseStorageFileContent, serializeStorageFileContent } from '../../core/storage-file.js';
 
 /**
  * Show set command help
@@ -201,7 +201,7 @@ export async function handleSet(args) {
   const content = await readFile(filePath, 'utf-8');
   
   // Parse all documents in the file
-  const docs = yaml.loadAll(content);
+  const { docs, body } = parseStorageFileContent(filePath, content);
   let updated = false;
   
   for (let i = 0; i < docs.length; i++) {
@@ -236,7 +236,7 @@ export async function handleSet(args) {
   }
   
   // Write back (multi-document) with validation rollback
-  const newContent = docs.map(d => yaml.dump(d, { lineWidth: -1, noRefs: true })).join('---\n');
+  const newContent = serializeStorageFileContent(filePath, docs, { body });
   const result = await safeWrite(filePath, newContent);
   
   if (!result.valid) {

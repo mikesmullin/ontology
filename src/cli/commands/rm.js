@@ -4,8 +4,9 @@
 
 import { loadAll, getStoragePath } from '../../core/loader.js';
 import { safeWrite } from '../../core/safe-write.js';
+import { readFile, unlink } from 'fs/promises';
 import { join } from 'path';
-import yaml from 'js-yaml';
+import { parseStorageFileContent, serializeStorageFileContent } from '../../core/storage-file.js';
 
 /**
  * Show rm command help
@@ -64,25 +65,12 @@ export async function handleRm(args) {
     const found = [];
     const notFound = [];
 
-    for (const id of ids) {
-      let foundInstance = false;
-      
-      // Search instance A-box across all classes
-      for (const className in data.instances.classes || {}) {
-        const instances = data.instances.classes[className];
-        if (Array.isArray(instances)) {
-          for (const inst of instances) {
-            if (inst.id === id) {
-              found.push(id);
-              foundInstance = true;
-              break;
-            }
-          }
-        }
-        if (foundInstance) break;
-      }
+    const existingIdSet = new Set((data.instances.classes || []).map(i => i._id));
 
-      if (!foundInstance) {
+    for (const id of ids) {
+      if (existingIdSet.has(id)) {
+        found.push(id);
+      } else {
         notFound.push(id);
       }
     }
@@ -99,29 +87,10 @@ export async function handleRm(args) {
       throw new Error('No instances found to remove');
     }
 
-    // Collect affected files
-    const affectedFiles = new Set();
-
-    for (const rawDoc of data.rawDocuments || []) {
-      const doc = rawDoc.document;
-      
-      // Check A-box (instances) in this document
-      if (doc.instances) {
-        for (const className in doc.instances) {
-          if (Array.isArray(doc.instances[className])) {
-            const instances = doc.instances[className];
-            const before = instances.length;
-            
-            // Remove by filtering
-            doc.instances[className] = instances.filter(inst => !ids.includes(inst.id));
-            
-            if (doc.instances[className].length < before) {
-              affectedFiles.add(rawDoc.source);
-            }
-          }
-        }
-      }
-    }
+    const affectedFiles = new Set(found.map(id => {
+      const instance = data.instances.classes.find(i => i._id === id);
+      return instance?._source;
+    }).filter(Boolean));
 
     if (affectedFiles.size === 0) {
       throw new Error('No instances found to remove');
@@ -130,23 +99,49 @@ export async function handleRm(args) {
     // Write back affected files
     const storagePath = getStoragePath();
     for (const source of affectedFiles) {
-      const doc = data.rawDocuments.find(d => d.source === source);
-      if (doc) {
-        const filePath = join(storagePath, '..', source);
-        const newContent = yaml.dump(doc.document, { lineWidth: -1, noRefs: true });
-        const result = await safeWrite(filePath, newContent);
+      const filePath = join(storagePath, '..', source);
+      const content = await readFile(filePath, 'utf-8');
+      const { docs, body } = parseStorageFileContent(filePath, content);
 
-        if (!result.valid) {
-          console.error(`Validation failed for ${source}:`);
-          for (const err of result.errors) {
-            console.error(`  ✗ ${err.message}`);
-          }
-          process.exit(1);
-        }
+      let removedInFile = 0;
+      for (const doc of docs) {
+        const classList = doc?.spec?.classes;
+        if (!Array.isArray(classList)) continue;
 
+        const beforeCount = classList.length;
+        doc.spec.classes = classList.filter(inst => !ids.includes(inst?._id));
+        removedInFile += (beforeCount - doc.spec.classes.length);
+      }
+
+      if (removedInFile === 0) continue;
+
+      const hasRemainingDocs = docs.some(doc => {
+        if (doc?.schema) return true;
+        if (Array.isArray(doc?.spec?.classes) && doc.spec.classes.length > 0) return true;
+        return false;
+      });
+
+      if (!hasRemainingDocs) {
+        await unlink(filePath);
         if (options.verbose) {
-          console.log(`Updated: ${source}`);
+          console.log(`Deleted empty file: ${source}`);
         }
+        continue;
+      }
+
+      const newContent = serializeStorageFileContent(filePath, docs, { body });
+      const result = await safeWrite(filePath, newContent);
+
+      if (!result.valid) {
+        console.error(`Validation failed for ${source}:`);
+        for (const err of result.errors) {
+          console.error(`  ✗ ${err.message}`);
+        }
+        process.exit(1);
+      }
+
+      if (options.verbose) {
+        console.log(`Updated: ${source}`);
       }
     }
 

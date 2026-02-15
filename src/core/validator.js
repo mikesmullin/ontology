@@ -288,7 +288,7 @@ function validateRelationInstance(relation, relationSchema, instancesById, class
   }
 
   // Validate domain (source class matches)
-  if (fromInstance && relationSchema.domain) {
+  if (fromInstance && relationSchema.domain && relationSchema.domain !== '*') {
     if (fromInstance._class !== relationSchema.domain) {
       errors.push({
         severity: 'error',
@@ -300,7 +300,7 @@ function validateRelationInstance(relation, relationSchema, instancesById, class
   }
 
   // Validate range (target class matches)
-  if (toInstance && relationSchema.range) {
+  if (toInstance && relationSchema.range && relationSchema.range !== '*') {
     if (toInstance._class !== relationSchema.range) {
       errors.push({
         severity: 'error',
@@ -513,6 +513,16 @@ export function validate(data) {
   const warnings = [];
 
   const { schema, instances, rawDocuments } = data;
+  const implicitLinksToSchema = { domain: '*', range: '*', cardinality: 'mtm' };
+
+  if (schema.relations?.LINKS_TO) {
+    errors.push({
+      severity: 'error',
+      message: `Relation 'LINKS_TO' is reserved and cannot be declared in schema`,
+      source: 'schema',
+      instance: 'relation:LINKS_TO'
+    });
+  }
 
   // Validate document structure (apiVersion, kind, schema/spec)
   validateDocuments(rawDocuments || [], errors, warnings);
@@ -572,9 +582,12 @@ export function validate(data) {
   // Validate relation instances
   for (const relation of instances.relations) {
     const relationType = relation._relation;
+    const relationSchema = relationType === 'LINKS_TO'
+      ? implicitLinksToSchema
+      : schema.relations[relationType];
 
     // Check relation exists in schema
-    if (!schema.relations[relationType]) {
+    if (!relationSchema) {
       errors.push({
         severity: 'error',
         message: `Relation '${relationType}' not defined in schema`,
@@ -586,7 +599,7 @@ export function validate(data) {
 
     validateRelationInstance(
       relation,
-      schema.relations[relationType],
+      relationSchema,
       instancesById,
       schema.classes,
       errors,

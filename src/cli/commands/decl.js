@@ -4,9 +4,9 @@
 
 import { loadAll, getStoragePath } from '../../core/loader.js';
 import { safeWrite } from '../../core/safe-write.js';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
-import yaml from 'js-yaml';
+import { parseStorageFileContent, serializeStorageFileContent } from '../../core/storage-file.js';
 
 /**
  * Show decl command help
@@ -129,7 +129,7 @@ async function findSchemaFile(data) {
   }
   
   // Default schema file
-  return join(storagePath, 'org-stormy.yml');
+  return join(storagePath, 'org-stormy.md');
 }
 
 /**
@@ -139,19 +139,20 @@ async function findSchemaFile(data) {
  */
 async function loadYamlFile(filePath) {
   const content = await readFile(filePath, 'utf-8');
-  const parsed = yaml.load(content);
-  return { content, parsed };
+  const { docs, body } = parseStorageFileContent(filePath, content);
+  const parsed = docs[0] || {};
+  return { parsed, body };
 }
 
 /**
- * Write YAML file with proper formatting
+ * Serialize schema document in storage format
  * @param {string} filePath
  * @param {Object} data
- * @returns {Promise<void>}
+ * @param {string} body
+ * @returns {string}
  */
-async function writeYamlFile(filePath, data) {
-  const content = yaml.dump(data, { lineWidth: -1, noRefs: true, quotingType: '"' });
-  await writeFile(filePath, content, 'utf-8');
+function serializeSchemaFile(filePath, data, body = '') {
+  return serializeStorageFileContent(filePath, [data], { body });
 }
 
 /**
@@ -186,7 +187,7 @@ async function handleDeclClass(args, options) {
   }
   
   // Load and update the schema file
-  const { content, parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
   
   // Ensure schema.classes exists
   if (!parsed.schema) {
@@ -200,7 +201,7 @@ async function handleDeclClass(args, options) {
   parsed.schema.classes[className] = {};
   
   // Write back with validation rollback
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeSchemaFile(schemaFilePath, parsed, body);
   const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
@@ -233,13 +234,18 @@ async function handleDeclRelation(args, options) {
   const domain = parseClassName(domainArg);
   const relation = parseClassName(relationArg);
   const range = parseClassName(rangeArg);
+
+  if (relation === 'LINKS_TO') {
+    console.error(`Error: Relation '${relation}' is reserved for implicit wiki-link relationships.`);
+    process.exit(1);
+  }
   
-  if (!isValidClassName(domain)) {
+  if (domain !== '*' && !isValidClassName(domain)) {
     console.error(`Error: Domain class '${domain}' must be ProperCase.`);
     process.exit(1);
   }
   
-  if (!isValidClassName(range)) {
+  if (range !== '*' && !isValidClassName(range)) {
     console.error(`Error: Range class '${range}' must be ProperCase.`);
     process.exit(1);
   }
@@ -261,13 +267,13 @@ async function handleDeclRelation(args, options) {
   const schemaFilePath = await findSchemaFile(data);
   
   // Check if domain and range classes exist
-  if (!data.schema.classes[domain]) {
+  if (domain !== '*' && !data.schema.classes[domain]) {
     console.error(`Error: Domain class '${domain}' not defined in schema.`);
     console.error(`Hint: Run 'ontology decl cls :${domain}' first.`);
     process.exit(1);
   }
   
-  if (!data.schema.classes[range]) {
+  if (range !== '*' && !data.schema.classes[range]) {
     console.error(`Error: Range class '${range}' not defined in schema.`);
     console.error(`Hint: Run 'ontology decl cls :${range}' first.`);
     process.exit(1);
@@ -282,7 +288,7 @@ async function handleDeclRelation(args, options) {
   }
   
   // Load and update the schema file
-  const { content, parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
   
   // Ensure schema.relations exists
   if (!parsed.schema) {
@@ -300,7 +306,7 @@ async function handleDeclRelation(args, options) {
   };
   
   // Write back with validation rollback
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeSchemaFile(schemaFilePath, parsed, body);
   const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
@@ -350,7 +356,7 @@ async function handleDeclProperty(args, options) {
   }
   
   const schemaFilePath = await findSchemaFile(data);
-  const { content, parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
   
   // Ensure properties object exists
   if (!parsed.schema.components[compName].properties) {
@@ -377,7 +383,7 @@ async function handleDeclProperty(args, options) {
   }
   
   // Write back with validation rollback
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeSchemaFile(schemaFilePath, parsed, body);
   const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
@@ -430,7 +436,7 @@ async function handleDeclComponent(args, options) {
   }
   
   // Load and update the schema file
-  const { content, parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
   
   // Ensure schema.components exists
   if (!parsed.schema) {
@@ -459,7 +465,7 @@ async function handleDeclComponent(args, options) {
   parsed.schema.components[compName] = { properties };
   
   // Write back with validation rollback
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeSchemaFile(schemaFilePath, parsed, body);
   const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
@@ -514,7 +520,7 @@ async function handleDeclQualifier(args, options) {
   }
   
   const schemaFilePath = await findSchemaFile(data);
-  const { content, parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
   
   // Ensure qualifiers object exists
   if (!parsed.schema.relations[relName].qualifiers) {
@@ -541,7 +547,7 @@ async function handleDeclQualifier(args, options) {
   }
   
   // Write back with validation rollback
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeSchemaFile(schemaFilePath, parsed, body);
   const result = await safeWrite(schemaFilePath, newContent);
   
   if (!result.valid) {
@@ -601,7 +607,7 @@ async function handleDeclClassComponent(args, options) {
   }
 
   const schemaFilePath = await findSchemaFile(data);
-  const { content, parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
 
   // Ensure class has components object
   if (!parsed.schema.classes[className] || typeof parsed.schema.classes[className] !== 'object') {
@@ -618,7 +624,7 @@ async function handleDeclClassComponent(args, options) {
   }
 
   // Write back with validation rollback
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeSchemaFile(schemaFilePath, parsed, body);
   const result = await safeWrite(schemaFilePath, newContent);
 
   if (!result.valid) {

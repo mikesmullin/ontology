@@ -4,10 +4,10 @@
 
 import { loadAll, getStoragePath, PROJECT_ROOT } from '../../core/loader.js';
 import { safeWrite } from '../../core/safe-write.js';
-import { readFile, writeFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { join } from 'path';
-import yaml from 'js-yaml';
 import { existsSync } from 'fs';
+import { serializeStorageFileContent } from '../../core/storage-file.js';
 
 /**
  * Show new command help
@@ -29,7 +29,7 @@ Options:
 
 Description:
   Creates a new instance of a class in the ontology storage.
-  The instance will be stored in storage/<class>-<id>.yml
+  The instance will be stored in storage/<Class>/<id>.md
   
   The new instance is created with an empty 'components' structure
   based on the class schema. Use 'ontology set' to populate values.
@@ -62,8 +62,7 @@ function parseIdentifier(identifier) {
  */
 function getInstanceFilePath(className, id) {
   const storagePath = getStoragePath();
-  const fileName = `${className.toLowerCase()}-${id}.yml`;
-  return join(storagePath, fileName);
+  return join(storagePath, className, `${id}.md`);
 }
 
 /**
@@ -207,6 +206,7 @@ export async function handleNew(args) {
   
   // Create the new instance document
   const filePath = getInstanceFilePath(className, id);
+  await mkdir(join(getStoragePath(), className), { recursive: true });
   
   if (existsSync(filePath)) {
     console.error(`Error: File '${filePath}' already exists.`);
@@ -214,7 +214,8 @@ export async function handleNew(args) {
   }
   
   const doc = createInstanceDocument(className, id, namespace, classComponents, initialValues);
-  const content = `# ${className}: ${id}\n${yaml.dump(doc, { lineWidth: -1, noRefs: true })}`;
+  const body = `# ${className}/${id}\n\n`;
+  const content = serializeStorageFileContent(filePath, [doc], { body });
   
   // Write with validation rollback
   const result = await safeWrite(filePath, content, { isNew: true });

@@ -4,9 +4,9 @@
 
 import { loadAll, getStoragePath, PROJECT_ROOT } from '../../core/loader.js';
 import { safeWrite } from '../../core/safe-write.js';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
-import yaml from 'js-yaml';
+import { parseStorageFileContent, serializeStorageFileContent } from '../../core/storage-file.js';
 
 /**
  * Show undecl command help
@@ -69,7 +69,7 @@ async function findSchemaFile(data) {
   }
   
   // Default schema file
-  return join(storagePath, 'org-stormy.yml');
+  return join(storagePath, 'org-stormy.md');
 }
 
 /**
@@ -79,8 +79,8 @@ async function findSchemaFile(data) {
  */
 async function loadYamlFile(filePath) {
   const content = await readFile(filePath, 'utf-8');
-  const parsed = yaml.load(content);
-  return { content, parsed };
+  const { docs, body } = parseStorageFileContent(filePath, content);
+  return { parsed: docs[0] || {}, body };
 }
 
 /**
@@ -163,7 +163,7 @@ async function undelClass(data, args, options) {
   }
 
   const schemaFilePath = await findSchemaFile(data);
-  const { parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
 
   // Remove the class
   if (parsed.schema.classes[className]) {
@@ -180,7 +180,7 @@ async function undelClass(data, args, options) {
     }
   }
 
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeStorageFileContent(schemaFilePath, [parsed], { body });
   const result = await safeWrite(schemaFilePath, newContent);
 
   if (!result.valid) {
@@ -218,13 +218,13 @@ async function undelComponent(data, args, options) {
   }
 
   const schemaFilePath = await findSchemaFile(data);
-  const { parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
 
   if (parsed.schema.components[compName]) {
     delete parsed.schema.components[compName];
   }
 
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeStorageFileContent(schemaFilePath, [parsed], { body });
   const result = await safeWrite(schemaFilePath, newContent);
 
   if (!result.valid) {
@@ -261,7 +261,7 @@ async function undelClassComponent(data, args, options) {
   }
 
   const schemaFilePath = await findSchemaFile(data);
-  const { parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
 
   if (parsed.schema.classes[className]?.components[localName]) {
     delete parsed.schema.classes[className].components[localName];
@@ -270,7 +270,7 @@ async function undelClassComponent(data, args, options) {
     }
   }
 
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeStorageFileContent(schemaFilePath, [parsed], { body });
   const result = await safeWrite(schemaFilePath, newContent);
 
   if (!result.valid) {
@@ -308,13 +308,13 @@ async function undelRelation(data, args, options) {
   }
 
   const schemaFilePath = await findSchemaFile(data);
-  const { parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
 
   if (parsed.schema.relations[relName]) {
     delete parsed.schema.relations[relName];
   }
 
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeStorageFileContent(schemaFilePath, [parsed], { body });
   const result = await safeWrite(schemaFilePath, newContent);
 
   if (!result.valid) {
@@ -351,7 +351,7 @@ async function undelProperty(data, args, options) {
   }
 
   const schemaFilePath = await findSchemaFile(data);
-  const { parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
 
   if (parsed.schema.components[compName]?.properties[propKey]) {
     delete parsed.schema.components[compName].properties[propKey];
@@ -360,7 +360,7 @@ async function undelProperty(data, args, options) {
     }
   }
 
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeStorageFileContent(schemaFilePath, [parsed], { body });
   const result = await safeWrite(schemaFilePath, newContent);
 
   if (!result.valid) {
@@ -397,7 +397,7 @@ async function undelQualifier(data, args, options) {
   }
 
   const schemaFilePath = await findSchemaFile(data);
-  const { parsed } = await loadYamlFile(schemaFilePath);
+  const { parsed, body } = await loadYamlFile(schemaFilePath);
 
   if (parsed.schema.relations[relName]?.qualifiers[qualKey]) {
     delete parsed.schema.relations[relName].qualifiers[qualKey];
@@ -406,7 +406,7 @@ async function undelQualifier(data, args, options) {
     }
   }
 
-  const newContent = yaml.dump(parsed, { lineWidth: -1, noRefs: true });
+  const newContent = serializeStorageFileContent(schemaFilePath, [parsed], { body });
   const result = await safeWrite(schemaFilePath, newContent);
 
   if (!result.valid) {

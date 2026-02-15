@@ -200,6 +200,22 @@ function getRelationDetails(name, schema) {
 }
 
 /**
+ * Get component definition
+ * @param {string} name
+ * @param {{ components: Record<string, any>, classes: Record<string, any>, relations: Record<string, any>, namespaces: Set<string> }} schema
+ */
+function getComponentDetails(name, schema) {
+  const componentDef = schema.components[name];
+  if (!componentDef) return null;
+
+  return {
+    type: 'component',
+    name,
+    properties: componentDef.properties || {}
+  };
+}
+
+/**
  * Print class details in tree format
  * @param {Object} details
  * @param {string} namespace
@@ -274,7 +290,14 @@ function printRelationTree(details, namespace) {
   console.log('');
   console.log(`  ${details.domain} → ${details.range} ${formatCardinality(details.cardinality)}`);
   console.log('');
-  console.log(`Cardinality: ${details.cardinality.min}..${details.cardinality.max === 'many' ? 'many' : details.cardinality.max} (${formatCardinalityText(details.cardinality)})`);
+  const cardCode = typeof details.cardinality === 'string' ? details.cardinality : 'mtm';
+  const cardTextMap = {
+    oto: '1..1',
+    otm: '1..many',
+    mto: '0..1',
+    mtm: '0..many'
+  };
+  console.log(`Cardinality: ${cardTextMap[cardCode] || cardCode} (${formatCardinalityText(cardCode)})`);
   
   console.log('Qualifiers:');
   if (!details.qualifiers || Object.keys(details.qualifiers).length === 0) {
@@ -287,6 +310,31 @@ function printRelationTree(details, namespace) {
       console.log(`  ${prefix} ${qualName}: ${qual.type}`);
     });
   }
+}
+
+/**
+ * Print component details in tree format
+ * @param {Object} details
+ * @param {string} namespace
+ */
+function printComponentTree(details, namespace) {
+  console.log(`Component: ${details.name}`);
+  console.log(`Namespace: ${namespace}`);
+  console.log('');
+  console.log('Properties:');
+
+  const propNames = Object.keys(details.properties || {});
+  if (propNames.length === 0) {
+    console.log('  (none)');
+    return;
+  }
+
+  propNames.forEach((propName, index) => {
+    const prop = details.properties[propName];
+    const prefix = index === propNames.length - 1 ? '└──' : '├──';
+    const required = prop?.required ? ' (required)' : '';
+    console.log(`  ${prefix} ${propName}: ${prop?.type || 'unknown'}${required}`);
+  });
 }
 
 /**
@@ -325,14 +373,17 @@ async function handleSchemaGet(args) {
   const schema = await loadSchema();
   const ns = namespace || [...schema.namespaces][0] || 'default';
   
-  // Try to find as class first, then as relation
+  // Try to find as class first, then as component, then as relation
   let details = getClassDetails(name, schema);
+  if (!details) {
+    details = getComponentDetails(name, schema);
+  }
   if (!details) {
     details = getRelationDetails(name, schema);
   }
   
   if (!details) {
-    console.error(`Error: No class or relation named '${name}' found.`);
+    console.error(`Error: No class, component, or relation named '${name}' found.`);
     process.exit(1);
   }
   
@@ -340,6 +391,8 @@ async function handleSchemaGet(args) {
     printDetailsJson(details, ns);
   } else if (details.type === 'class') {
     printClassTree(details, ns, schema.components || {});
+  } else if (details.type === 'component') {
+    printComponentTree(details, ns);
   } else {
     printRelationTree(details, ns);
   }
@@ -357,7 +410,7 @@ Usage:
 
 Subcommands:
   list              List all classes and relations
-  get <name>        Get details for a specific class or relation
+  get <name>        Get details for a specific class, component, or relation
 
 Options:
   -n, --namespace   Filter by namespace
@@ -366,6 +419,7 @@ Options:
 Examples:
   ontology schema list
   ontology schema get Person
+  ontology schema get Identity
   ontology schema get memberOf
 `);
 }

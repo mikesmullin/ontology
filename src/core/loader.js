@@ -5,7 +5,7 @@
 import { readdir, readFile } from 'fs/promises';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import yaml from 'js-yaml';
+import { parseStorageFileContent, extractWikiLinks, isMarkdownStorageFile } from './storage-file.js';
 
 /**
  * @typedef {import('./types.js').OntologyDocument} OntologyDocument
@@ -44,27 +44,40 @@ async function storageExists(storagePath) {
 }
 
 /**
- * List all YAML files in storage directory
+ * List all ontology files in storage directory recursively
  * @param {string} storagePath
  * @returns {Promise<string[]>}
  */
-async function listYamlFiles(storagePath) {
+async function listOntologyFiles(storagePath) {
+  const files = [];
   const entries = await readdir(storagePath, { withFileTypes: true });
-  return entries
-    .filter(e => e.isFile() && (e.name.endsWith('.yml') || e.name.endsWith('.yaml')))
-    .map(e => join(storagePath, e.name));
+
+  for (const entry of entries) {
+    const fullPath = join(storagePath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listOntologyFiles(fullPath));
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+
+    const lowerName = entry.name.toLowerCase();
+    if (lowerName.endsWith('.yml') || lowerName.endsWith('.yaml') || lowerName.endsWith('.md')) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
 }
 
 /**
- * Parse a single YAML file (supports multi-document)
+ * Parse a single ontology storage file
  * @param {string} filePath
- * @returns {Promise<OntologyDocument[]>}
+ * @returns {Promise<{ docs: OntologyDocument[], body: string }>}
  */
-async function parseYamlFile(filePath) {
+async function parseOntologyFile(filePath) {
   const content = await readFile(filePath, 'utf-8');
-  const docs = yaml.loadAll(content);
-  
-  return docs.filter(doc => doc !== null && doc !== undefined);
+  return parseStorageFileContent(filePath, content);
 }
 
 /**
@@ -148,9 +161,10 @@ function extractPerClassRelations(instance, namespace, relativePath) {
  * Extract instances from documents
  * @param {OntologyDocument[]} docs
  * @param {string} filePath
+ * @param {string} markdownBody
  * @returns {{ classes: ClassInstance[], relations: RelationInstance[] }}
  */
-function extractInstances(docs, filePath) {
+function extractInstances(docs, filePath, markdownBody = '') {
   const classes = [];
   const relations = [];
   const relativePath = filePath.replace(PROJECT_ROOT + '/', '');
@@ -175,6 +189,24 @@ function extractInstances(docs, filePath) {
           _source: relativePath
         });
       }
+
+      if (isMarkdownStorageFile(filePath)) {
+        const wikiLinks = extractWikiLinks(markdownBody);
+        if (wikiLinks.length > 0) {
+          for (const instance of doc.spec.classes) {
+            for (const link of wikiLinks) {
+              relations.push({
+                _from: instance._id,
+                _relation: 'LINKS_TO',
+                _to: link.id,
+                _toClass: link.className,
+                _namespace: namespace,
+                _source: relativePath
+              });
+            }
+          }
+        }
+      }
     }
   }
 
@@ -193,7 +225,7 @@ export async function loadAll(customPath) {
     throw new Error(`Storage directory not found: ${storagePath}`);
   }
 
-  const files = await listYamlFiles(storagePath);
+  const files = await listOntologyFiles(storagePath);
   
   /** @type {LoadedData} */
   const result = {
@@ -204,7 +236,7 @@ export async function loadAll(customPath) {
   };
 
   for (const filePath of files) {
-    const docs = await parseYamlFile(filePath);
+    const { docs, body } = await parseOntologyFile(filePath);
     const relativePath = filePath.replace(PROJECT_ROOT + '/', '');
     
     result.files.push(relativePath);
@@ -227,7 +259,7 @@ export async function loadAll(customPath) {
     }
 
     // Extract instances
-    const instances = extractInstances(docs, filePath);
+    const instances = extractInstances(docs, filePath, body);
     result.instances.classes.push(...instances.classes);
     result.instances.relations.push(...instances.relations);
 
