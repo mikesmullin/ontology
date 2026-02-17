@@ -65,7 +65,8 @@ Description:
   - apiVersion: agent/v1 is present (exact-match, required)
   - kind: Ontology is present (exact-match, required)
   - schema: or spec: is defined in each file
-  - _id is unique within the namespace
+  - Each file contains at most one class instance
+  - _id is globally unique across all files
   - _class reference is defined in schema
   - Component local names match class schema definition
   - Required component properties are present

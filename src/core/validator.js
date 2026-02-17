@@ -536,28 +536,35 @@ export function validate(data) {
   // Validate schema naming conventions
   validateSchemaNames(schema, errors, warnings);
 
+  // Validate file-level class instance constraint (max 1 per file)
+  validateSingleClassInstancePerFile(rawDocuments || [], errors, warnings);
+
   // Build instance lookup map and check for duplicate IDs
   const instancesById = new Map();
-  const idsByNamespace = new Map();
+  const firstSeenById = new Map();
 
   for (const instance of instances.classes) {
     if (instance._id) {
-      const namespace = instance._namespace || 'default';
-      const key = `${namespace}:${instance._id}`;
+      const firstSeen = firstSeenById.get(instance._id);
 
-      // Check for duplicate _id within namespace
-      if (idsByNamespace.has(key)) {
+      // Check for duplicate _id globally
+      if (firstSeen) {
         errors.push({
           severity: 'error',
-          message: `Duplicate _id '${instance._id}' in namespace '${namespace}' (also in ${idsByNamespace.get(key)})`,
+          message: `Duplicate _id '${instance._id}' detected; IDs must be globally unique (already defined in ${firstSeen.source})`,
           source: instance._source,
           instance: `${instance._class}:${instance._id}`
         });
       } else {
-        idsByNamespace.set(key, instance._source);
+        firstSeenById.set(instance._id, {
+          source: instance._source,
+          className: instance._class
+        });
       }
 
-      instancesById.set(instance._id, instance);
+      if (!instancesById.has(instance._id)) {
+        instancesById.set(instance._id, instance);
+      }
     }
   }
 
@@ -628,6 +635,38 @@ export function validate(data) {
       relations: instances.relations.length
     }
   };
+}
+
+/**
+ * Validate that each file contains at most one class instance.
+ * @param {{ source: string, document: any }[]} rawDocuments
+ * @param {ValidationError[]} errors
+ * @param {ValidationError[]} warnings
+ */
+function validateSingleClassInstancePerFile(rawDocuments, errors, warnings) {
+  const classCountByFile = new Map();
+
+  for (const { source, document } of rawDocuments) {
+    if (!classCountByFile.has(source)) {
+      classCountByFile.set(source, 0);
+    }
+
+    const classes = document?.spec?.classes;
+    if (!Array.isArray(classes)) continue;
+
+    classCountByFile.set(source, classCountByFile.get(source) + classes.length);
+  }
+
+  for (const [source, count] of classCountByFile.entries()) {
+    if (count > 1) {
+      errors.push({
+        severity: 'error',
+        message: `File contains ${count} class instances; each file may contain exactly one class instance`,
+        source,
+        instance: 'spec.classes'
+      });
+    }
+  }
 }
 
 /**

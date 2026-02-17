@@ -87,10 +87,13 @@ export async function handleRm(args) {
       throw new Error('No instances found to remove');
     }
 
-    const affectedFiles = new Set(found.map(id => {
-      const instance = data.instances.classes.find(i => i._id === id);
-      return instance?._source;
-    }).filter(Boolean));
+    const affectedFiles = new Set(
+      found.flatMap(id =>
+        data.instances.classes
+          .filter(instance => instance._id === id)
+          .map(instance => instance._source)
+      ).filter(Boolean)
+    );
 
     if (affectedFiles.size === 0) {
       throw new Error('No instances found to remove');

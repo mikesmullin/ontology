@@ -82,11 +82,15 @@ function parseQualifier(qualifier) {
  * @returns {string | null}
  */
 function findInstanceFile(id, data) {
-  const instance = data.instances.classes.find(i => i._id === id);
-  if (!instance) {
+  const matches = data.instances.classes.filter(i => i._id === id);
+  if (matches.length === 0) {
     return null;
   }
-  return instance._source;
+  if (matches.length > 1) {
+    const sources = matches.map(i => i._source).filter(Boolean).join(', ');
+    throw new Error(`Duplicate _id '${id}' found in multiple files: ${sources}. Resolve duplicates before using 'link'.`);
+  }
+  return matches[0]._source;
 }
 
 /**
@@ -164,17 +168,29 @@ export async function handleLink(args) {
   }
   
   // Check if both endpoints exist
-  const fromInstance = data.instances.classes.find(i => i._id === fromId);
-  if (!fromInstance) {
+  const fromMatches = data.instances.classes.filter(i => i._id === fromId);
+  if (fromMatches.length === 0) {
     console.error(`Error: Source instance '${fromId}' not found.`);
     console.error(`Hint: Run 'ontology new ${fromId}:${fromClass}' first.`);
     process.exit(1);
   }
+  if (fromMatches.length > 1) {
+    const sources = fromMatches.map(i => i._source).filter(Boolean).join(', ');
+    console.error(`Error: Duplicate _id '${fromId}' found in multiple files: ${sources}.`);
+    console.error("Hint: Run 'ontology validate' and resolve duplicates before linking.");
+    process.exit(1);
+  }
   
-  const toInstance = data.instances.classes.find(i => i._id === toId);
-  if (!toInstance) {
+  const toMatches = data.instances.classes.filter(i => i._id === toId);
+  if (toMatches.length === 0) {
     console.error(`Error: Target instance '${toId}' not found.`);
     console.error(`Hint: Run 'ontology new ${toId}:${toClass}' first.`);
+    process.exit(1);
+  }
+  if (toMatches.length > 1) {
+    const sources = toMatches.map(i => i._source).filter(Boolean).join(', ');
+    console.error(`Error: Duplicate _id '${toId}' found in multiple files: ${sources}.`);
+    console.error("Hint: Run 'ontology validate' and resolve duplicates before linking.");
     process.exit(1);
   }
   
@@ -188,7 +204,13 @@ export async function handleLink(args) {
   }
   
   // Find the source file (where _from instance is defined)
-  const sourceFile = findInstanceFile(fromId, data);
+  let sourceFile;
+  try {
+    sourceFile = findInstanceFile(fromId, data);
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  }
   if (!sourceFile) {
     console.error(`Error: Could not find file for instance '${fromId}'.`);
     process.exit(1);

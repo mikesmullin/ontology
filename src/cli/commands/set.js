@@ -110,11 +110,15 @@ function parseAssignment(assignment) {
  * @returns {string | null}
  */
 function findInstanceFile(id, data) {
-  const instance = data.instances.classes.find(i => i._id === id);
-  if (!instance) {
+  const matches = data.instances.classes.filter(i => i._id === id);
+  if (matches.length === 0) {
     return null;
   }
-  return instance._source;
+  if (matches.length > 1) {
+    const sources = matches.map(i => i._source).filter(Boolean).join(', ');
+    throw new Error(`Duplicate _id '${id}' found in multiple files: ${sources}. Resolve duplicates before using 'set'.`);
+  }
+  return matches[0]._source;
 }
 
 /**
@@ -189,7 +193,13 @@ export async function handleSet(args) {
   }
   
   // Find the source file
-  const sourceFile = findInstanceFile(id, data);
+  let sourceFile;
+  try {
+    sourceFile = findInstanceFile(id, data);
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  }
   if (!sourceFile) {
     console.error(`Error: Could not find file for instance '${id}'.`);
     process.exit(1);
