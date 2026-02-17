@@ -357,17 +357,17 @@ spec:
 
 ### 5.1 Naming Convention
 
-Files should be stored in the `storage/` directory with descriptive names:
+Files should be stored in the `~/.ontology/storage/` directory with descriptive names:
 
 ```
-storage/<class>-<id>.yml
+~/.ontology/storage/<class>-<id>.yml
 ```
 
 Examples:
-- `storage/org-stormy.yml` — Schema definition
-- `storage/person-jdoe.yml` — Person instance
-- `storage/team-zulu.yml` — Team instance
-- `storage/product-scr.yml` — Product instance
+- `~/.ontology/storage/org-stormy.yml` — Schema definition
+- `~/.ontology/storage/person-jdoe.yml` — Person instance
+- `~/.ontology/storage/team-zulu.yml` — Team instance
+- `~/.ontology/storage/product-scr.yml` — Product instance
 
 ### 5.2 Document Separation
 
@@ -406,7 +406,7 @@ Relations are defined per-class within the `relations` property of each class in
 
 ## 6. Complete Example
 
-### Schema Definition (`storage/org-stormy.yml`)
+### Schema Definition (`~/.ontology/storage/org-stormy.yml`)
 
 ```yaml
 apiVersion: agent/v1
@@ -461,7 +461,7 @@ schema:
           type: string
 ```
 
-### Person Instance (`storage/person-jdoe.yml`)
+### Person Instance (`~/.ontology/storage/person-jdoe.yml`)
 
 ```yaml
 apiVersion: agent/v1
@@ -490,7 +490,7 @@ spec:
       - msmullin
 ```
 
-### Team Instance (`storage/team-zulu.yml`)
+### Team Instance (`~/.ontology/storage/team-zulu.yml`)
 
 ```yaml
 apiVersion: agent/v1
@@ -517,7 +517,7 @@ spec:
 
 When creating new instances:
 
-1. Check for existing instances by `_id` across all files in `storage/`
+1. Check for existing instances by `_id` across all files in `~/.ontology/storage/`
 2. If found, update the existing file
 3. If not found, create a new file following the naming convention
 

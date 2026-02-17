@@ -14,7 +14,7 @@ Properties are defined within reusable **components**, which are then attached t
 An example follows:
 
 ```yml
-# storage/org-stormy.yml
+# ~/.ontology/storage/org-stormy.yml
 apiVersion: agent/v1
 kind: Ontology
 metadata:
@@ -66,7 +66,7 @@ schema:
         role:
           type: string
 ---
-# storage/product-scr.yml
+# ~/.ontology/storage/product-scr.yml
 apiVersion: agent/v1
 kind: Ontology
 metadata:
@@ -128,10 +128,10 @@ userPrincipalName: jdoe@company.com
 ```
 
 then we expect to generate output 
-under `storage/*.yml`
+under `~/.ontology/storage/*.yml`
 like:
 ```yml
-# storage/person-jdoe.yml
+# ~/.ontology/storage/person-jdoe.yml
 apiVersion: agent/v1
 kind: Ontology
 metadata:
@@ -165,7 +165,7 @@ Relations are defined within the class instance using a compact format:
 
 ie. link the team
 ```yml
-# storage/team-zulu.yml
+# ~/.ontology/storage/team-zulu.yml
 apiVersion: agent/v1
 kind: Ontology
 metadata:
@@ -181,7 +181,7 @@ spec:
 
 ie. link the manager
 
-if the manager exists, we add the relation within `storage/person-jdoe.yml`:
+if the manager exists, we add the relation within `~/.ontology/storage/person-jdoe.yml`:
 ```yml
   # within the class instance...
     relations:
@@ -190,7 +190,7 @@ if the manager exists, we add the relation within `storage/person-jdoe.yml`:
       REPORTS_TO:
       - msmullin
 ```
-else, we (recurse to) lookup the manager, and create his file `storage/person-msmullin.yml`
+else, we (recurse to) lookup the manager, and create his file `~/.ontology/storage/person-msmullin.yml`
 
 ### Using the Ontology CLI
 
@@ -230,4 +230,4 @@ ontology validate              # Validate all instances against schema
 - The `decl cmp` command attaches existing components to a class: e.g., `ontology decl cmp :Service naming:Naming documentation:Documentation`
 - All schema/instance-mutating commands validate after write and roll back on failure.
 
-IMPORTANT: Whenever you make changes to the `storage/*.yml`, run `ontology validate` to confirm the changes are correct.
+IMPORTANT: Whenever you make changes to the `~/.ontology/storage/*.yml`, run `ontology validate` to confirm the changes are correct.

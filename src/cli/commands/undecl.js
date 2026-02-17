@@ -2,7 +2,7 @@
  * Undecl Command Handler - Remove T-box schema elements (classes, relations, properties, qualifiers)
  */
 
-import { loadAll, getStoragePath, PROJECT_ROOT } from '../../core/loader.js';
+import { loadAll, getStoragePath } from '../../core/loader.js';
 import { safeWrite } from '../../core/safe-write.js';
 import { readFile } from 'fs/promises';
 import { join } from 'path';

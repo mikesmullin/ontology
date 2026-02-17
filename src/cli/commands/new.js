@@ -2,7 +2,7 @@
  * New Command Handler - Create new A-box instances
  */
 
-import { loadAll, getStoragePath, PROJECT_ROOT } from '../../core/loader.js';
+import { loadAll, getStoragePath, toStorageSourcePath } from '../../core/loader.js';
 import { safeWrite } from '../../core/safe-write.js';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -29,7 +29,7 @@ Options:
 
 Description:
   Creates a new instance of a class in the ontology storage.
-  The instance will be stored in storage/<Class>/<id>.md
+  The instance will be stored in ~/.ontology/storage/<Class>/<id>.md
   
   The new instance is created with an empty 'components' structure
   based on the class schema. Use 'ontology set' to populate values.
@@ -229,7 +229,7 @@ export async function handleNew(args) {
   }
   
   if (!options.quiet) {
-    const relPath = filePath.replace(PROJECT_ROOT + '/', '');
+    const relPath = toStorageSourcePath(filePath);
     console.log(`Created ${className}:${id} in ${relPath}`);
   }
 }

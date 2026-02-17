@@ -53,7 +53,7 @@ Options:
   --help           Show this help message
 
 Description:
-  Validates all ontology files in storage/**/*.{yml,yaml,md} against the schema (T-box).
+  Validates all ontology files in ~/.ontology/storage/**/*.{yml,yaml,md} against the schema (T-box).
 
   Component-Based Validation:
   - Properties must be defined within components (no root-level properties)

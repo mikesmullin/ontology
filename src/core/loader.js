@@ -3,8 +3,9 @@
  */
 
 import { readdir, readFile } from 'fs/promises';
-import { join, resolve, dirname } from 'path';
+import { join, resolve, dirname, relative, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 import { parseStorageFileContent, extractWikiLinks, isMarkdownStorageFile } from './storage-file.js';
 
 /**
@@ -26,7 +27,22 @@ export const PROJECT_ROOT = resolve(__dirname, '..', '..');
  * @returns {string}
  */
 export function getStoragePath() {
-  return resolve(PROJECT_ROOT, 'storage');
+  return resolve(homedir(), '.ontology', 'storage');
+}
+
+/**
+ * Convert an absolute storage file path to a canonical source path.
+ * Files under the storage root are represented as storage/<relative-path>.
+ * @param {string} filePath
+ * @param {string} [storagePath]
+ * @returns {string}
+ */
+export function toStorageSourcePath(filePath, storagePath = getStoragePath()) {
+  const relPath = relative(storagePath, filePath);
+  if (!relPath.startsWith('..') && !isAbsolute(relPath)) {
+    return join('storage', relPath).replaceAll('\\', '/');
+  }
+  return filePath;
 }
 
 /**
@@ -164,10 +180,10 @@ function extractPerClassRelations(instance, namespace, relativePath) {
  * @param {string} markdownBody
  * @returns {{ classes: ClassInstance[], relations: RelationInstance[] }}
  */
-function extractInstances(docs, filePath, markdownBody = '') {
+function extractInstances(docs, filePath, markdownBody = '', storagePath = getStoragePath()) {
   const classes = [];
   const relations = [];
-  const relativePath = filePath.replace(PROJECT_ROOT + '/', '');
+  const relativePath = toStorageSourcePath(filePath, storagePath);
 
   for (const doc of docs) {
     if (doc.apiVersion !== 'agent/v1' || doc.kind !== 'Ontology') continue;
@@ -237,7 +253,7 @@ export async function loadAll(customPath) {
 
   for (const filePath of files) {
     const { docs, body } = await parseOntologyFile(filePath);
-    const relativePath = filePath.replace(PROJECT_ROOT + '/', '');
+    const relativePath = toStorageSourcePath(filePath, storagePath);
     
     result.files.push(relativePath);
 
@@ -259,7 +275,7 @@ export async function loadAll(customPath) {
     }
 
     // Extract instances
-    const instances = extractInstances(docs, filePath, body);
+    const instances = extractInstances(docs, filePath, body, storagePath);
     result.instances.classes.push(...instances.classes);
     result.instances.relations.push(...instances.relations);
 
