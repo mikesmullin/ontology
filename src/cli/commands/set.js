@@ -182,7 +182,7 @@ export async function handleSet(args) {
   const existingInstance = data.instances.classes.find(i => i._id === id);
   if (!existingInstance) {
     console.error(`Error: Instance '${id}' not found.`);
-    console.error(`Hint: Run 'ontology new ${id}:${className}' first.`);
+    console.error("Hint: Create it with 'ontology import <file.yaml>' first.");
     process.exit(1);
   }
   

@@ -171,7 +171,7 @@ export async function handleLink(args) {
   const fromMatches = data.instances.classes.filter(i => i._id === fromId);
   if (fromMatches.length === 0) {
     console.error(`Error: Source instance '${fromId}' not found.`);
-    console.error(`Hint: Run 'ontology new ${fromId}:${fromClass}' first.`);
+    console.error("Hint: Create it with 'ontology import <file.yaml>' first.");
     process.exit(1);
   }
   if (fromMatches.length > 1) {
@@ -184,7 +184,7 @@ export async function handleLink(args) {
   const toMatches = data.instances.classes.filter(i => i._id === toId);
   if (toMatches.length === 0) {
     console.error(`Error: Target instance '${toId}' not found.`);
-    console.error(`Hint: Run 'ontology new ${toId}:${toClass}' first.`);
+    console.error("Hint: Create it with 'ontology import <file.yaml>' first.");
     process.exit(1);
   }
   if (toMatches.length > 1) {

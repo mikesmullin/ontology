@@ -4,17 +4,113 @@ An ontology is a structured way to describe things in a domain and how they rela
 Think of it like a schema + a dictionary + relationship rules, all combined.
 If a database schema describes data storage, then an ontology describes concepts and the meaning between them.
 
-This file will teach you a skill: how to lookup employees and add them to our ontology flat-file database.
-If I say `ETL <employee>` (ie. `ETL jdoe`) then that means to perform this skill (extract LDAP employee record -> ontology resource yaml flat-file db) on the employee (ie. `jdoe`).
+It combines:
+- **Schema**: structure and validation rules for data
+- **Dictionary**: definitions of concepts and terminology
+- **Relationship Rules**: how concepts connect to one another
 
-### Schema
+### Core Model
 
-We utilize a proprietary schema, inspired by Kubernetes (YAML) resource files.
-Properties are defined within reusable **components**, which are then attached to **classes**.
-An example follows:
+#### T-Box vs A-Box
 
-```yml
-# ~/.ontology/storage/org-stormy.yml
+| Box | Section | Purpose |
+|---|---|---|
+| T-Box | `schema` | Defines component types, class types, and relation types |
+| A-Box | `spec` | Contains concrete class instances and per-instance relations |
+
+> One ontology document may contain `schema`, `spec`, or both. A file must contain at least one of them.
+
+#### Supported Property Types
+
+| Type | Meaning |
+|---|---|
+| `string` | Text |
+| `bool` | Boolean |
+| `date` | ISO-8601 date/datetime string |
+| `string[]` | Array of text |
+| `bool[]` | Array of booleans |
+| `date[]` | Array of ISO-8601 date/datetime strings |
+
+#### Qualifier Structure (relations)
+
+| Location | Shape |
+|---|---|
+| Relation type definition | `schema.relations.REL.qualifiers.<name>.type` |
+| Relation instance value | `relations.REL: [targetId, { _to: targetId, qualifier: value }]` |
+
+```yaml
+schema:
+  relations:
+    OWNS:
+      domain: Team
+      range: Product
+      cardinality: mtm
+      qualifiers:
+        role:
+          type: string
+
+spec:
+  classes:
+  - _class: Team
+    _id: team-zulu
+    relations:
+      OWNS:
+      - { _to: tetris, role: product-owner }
+```
+
+#### Naming Conventions
+
+| Element | Convention | Example |
+|---|---|---|
+| Class type names | ProperCase | `Person`, `TeamMember` |
+| Component type names | ProperCase | `Identity`, `Contact` |
+| Relation type names | UPPERCASE_UNDERSCORED | `MEMBER_OF`, `REPORTS_TO` |
+| Property names | camelCase | `givenName`, `emailAddress` |
+| Qualifier names | camelCase | `role`, `createdAt` |
+| Class component local names | camelCase | `identity`, `contact` |
+
+#### Grammar + Terminologys
+
+```text
+Document       := Header (Schema? Spec?)
+Header         := apiVersion kind metadata
+Schema         := schema { components?, classes?, relations? }
+Spec           := spec { classes[] }
+
+ComponentType  := ComponentName { properties }
+Property       := name { type, required }
+ClassType      := ClassName { components? }
+ClassComp      := localName: ComponentType
+Relationship   := name { domain, range, cardinality, qualifiers? }
+Cardinality    := "oto" | "otm" | "mto" | "mtm"
+
+ClassInstance  := _class, _id, components?, relations?
+Component      := localName: { ...propertyValues }
+RelationsMap   := { RELATION_NAME: [targetId | { _to, ...qualifiers }] }
+Qualifier      := scalar value on a qualified relation target object
+```
+
+Implementation notes:
+- `spec.relations` (top-level) is invalid; relations must be nested under each class instance.
+- Relation targets must be either string IDs or objects containing `_to`.
+- Each file may contain at most one class instance (`spec.classes` total per file).
+
+### Schema + Data Quick Reference
+
+Use this compact pattern when creating or updating ontology files.
+
+#### 1) Schema (Pattern)
+
+| Section | Required fields | Notes |
+|---|---|---|
+| Header | `apiVersion`, `kind`, `metadata.namespace` | Must be `agent/v1` + `Ontology` |
+| Components | `schema.components.<Component>.properties` | Property types: `string`, `bool`, `date`, and array variants |
+| Classes | `schema.classes.<Class>.components` | Maps local component names to component classes |
+| Relations | `schema.relations.<REL>` with `domain`, `range`, `cardinality` | Cardinality: `oto`, `otm`, `mto`, `mtm` |
+
+```yaml
+# ~/.ontology/storage/org-stormy.md
+---
 apiVersion: agent/v1
 kind: Ontology
 metadata:
@@ -29,11 +125,6 @@ schema:
     Contact:
       properties:
         email: { type: string, required: true }
-    Employment:
-      properties:
-        title: { type: string, required: true }
-        active: { type: bool, required: true }
-        created: { type: date, required: true }
     Naming:
       properties:
         name: { type: string, required: true }
@@ -42,11 +133,7 @@ schema:
       components:
         identity: Identity
         contact: Contact
-        employment: Employment
     Team:
-      components:
-        naming: Naming
-    Product:
       components:
         naming: Naming
   relations:
@@ -54,84 +141,21 @@ schema:
       domain: Person
       range: Team
       cardinality: mtm
-    REPORTS_TO:
-      domain: Person
-      range: Person
-      cardinality: oto
-    OWNS:
-      domain: Team
-      range: Product
-      cardinality: mtm
-      qualifiers:
-        role:
-          type: string
 ---
-# ~/.ontology/storage/product-scr.yml
-apiVersion: agent/v1
-kind: Ontology
-metadata:
-  namespace: stormy
-spec:
-  classes:
-  - _class: Product
-    _id: tetris
-    components:
-      naming:
-        name: "Tetris"
 ```
 
-### Gathering Data
+#### 2) Data (Example)
 
-You will occasionally be asked to fetch an employee record via LDAP.
-ie. lookup employee `jdoe`:
-```bash
-$ node ./actions/lookup-employee.mjs --name jdoe
-```
+| Instance field | Purpose | Example |
+|---|---|---|
+| `_class` | Class identifier | `Person`, `Team` |
+| `_id` | Unique instance ID | `jdoe`, `team-zulu` |
+| `components` | Values grouped by class local component names | `identity`, `contact`, `naming` |
+| `relations` | Outgoing links from this instance | `MEMBER_OF: [team-zulu]` |
 
-The goal is to convert it to an ontology resource file.
-
-example: given this output from `lookup-employee.mjs`:
-```bash
-$ node ./actions/lookup-employee.mjs --name jdoe
-Authenticating with Microsoft Graph...
-Token valid for 1337 more minutes
-Using cached token from .tokens.yaml
-Looking up employee: jdoe
-Trying with @company.com domain...
-Could not fetch sign-in activity: User is not in the allowed roles
-name: John Doe
-email: jdoe@company.com
-title: Software Engineer
-department: Information Technology
-active: true
-activeConfidence: medium
-activeSignals:
-  - No sign-in activity recorded
-accountType: user
-manager: msmullin@company.com
-searchMethod: username with domain
-accountEnabled: true
-createdDateTime: "2015-06-12T23:46:05Z"
-onPremisesSyncEnabled: true
-userType: Member
-employeeType: Employee
-isResourceAccount: false
-givenName: John
-surname: Doe
-assignedPlansCount: 116
-managerName: Mike Smullin
-managerTitle: Lead Site Reliability Engineer
-directReportsCount: 0
-directReports: []
-lastSignIn: null
-userPrincipalName: jdoe@company.com
-```
-
-then we expect to generate output 
-under `~/.ontology/storage/*.yml`
-like:
-```yml
-# ~/.ontology/storage/person-jdoe.yml
+```yaml
+# ~/.ontology/storage/person-jdoe.md
+---
 apiVersion: agent/v1
 kind: Ontology
 metadata:
@@ -142,30 +166,18 @@ spec:
     _id: jdoe
     components:
       identity:
-        givenName: "John"
-        surname: "Doe"
-        name: "John Doe"
+        givenName: John
+        surname: Doe
+        name: John Doe
       contact:
-        email: "jdoe@company.com"
-      employment:
-        title: "Software Engineer"
-        active: true
-        created: "2015-06-12T23:46:05Z"
+        email: jdoe@company.com
     relations:
       MEMBER_OF:
       - team-zulu
-      REPORTS_TO:
-      - msmullin
-```
+---
 
-Relations are defined within the class instance using a compact format:
-- The `_from` is implicit (it's the `_id` of the containing class)
-- Each relation type maps to an array of targets
-- For relations with qualifiers, use `{ _to: target, qualifier: value }`
-
-ie. link the team
-```yml
-# ~/.ontology/storage/team-zulu.yml
+# ~/.ontology/storage/team-zulu.md
+---
 apiVersion: agent/v1
 kind: Ontology
 metadata:
@@ -174,46 +186,95 @@ spec:
   classes:
   - _class: Team
     _id: team-zulu
-    relations:
-      OWNS:
-      - { _to: tetris, role: "product-owner" }
+    components:
+      naming:
+        name: Team Zulu
+---
 ```
-
-ie. link the manager
-
-if the manager exists, we add the relation within `~/.ontology/storage/person-jdoe.yml`:
-```yml
-  # within the class instance...
-    relations:
-      MEMBER_OF:
-      - team-zulu
-      REPORTS_TO:
-      - msmullin
-```
-else, we (recurse to) lookup the manager, and create his file `~/.ontology/storage/person-msmullin.yml`
 
 ### Using the Ontology CLI
 
-The `ontology` CLI tool provides commands to manage both schema (T-box) and instances (A-box).
+The `ontology` CLI is now import-first.
 
-Run `ontology --help` for the full command list. Key commands:
+Run `ontology --help` for the full command list. Primary command:
 
-#### T-box (Schema) Commands
 ```bash
-ontology decl cls :ClassName                        # Declare a new class
-ontology decl comp ComponentName key:type [required] # Declare a new component with properties
-ontology decl cmp :Class local:Component [...]       # Attach components to a class
-ontology decl rel :Domain mtm :REL_NAME :Range       # Declare a relation
-ontology decl prop Component key:type [required]     # Add properties to existing component
-ontology decl qual :REL_NAME key:type [required]     # Add qualifiers to a relation
+ontology import file.yaml [--force]
+ontology --db /tmp/my-ontology import file.yaml
 ```
 
-#### A-box (Instance) Commands
+Supported instance/query utilities:
+
 ```bash
-ontology new id:Class comp.key=value [...]    # Create instance with inline properties
 ontology set id:Class comp.key=value          # Set properties on existing instance
 ontology link from:Class REL_NAME to:Class    # Create a relation between instances
 ontology get id                               # Get instance with its relations
+ontology rm id [id ...]                       # Remove instances
+ontology validate                             # Validate all data
+ontology search "query"                       # Search instances
+ontology graph id                             # Visualize relationships
+ontology schema list                          # List classes/components/relations
+```
+
+#### Import from YAML (Recommended for Complex Data)
+
+The `import` command is the **preferred way to create or update instances**, especially when dealing with:
+- Multiline strings (descriptions, bodies)
+- Complex nested data
+- Batch operations
+
+```bash
+ontology import task.yaml              # Import single instance
+ontology import batch.yaml --verbose   # Import with detailed output
+ontology import update.yaml --force    # Overwrite existing instances
+```
+
+**Input format (single document):**
+
+```yaml
+_class: Task
+_id: abc123                    # Optional: auto-generated if omitted
+components:
+  workunit:
+    id: abc123
+    summary: My task
+    description: |
+      Multiline description
+      with paragraphs.
+    important: true
+    urgent: false
+```
+
+**Batch format (multi-document):**
+
+```yaml
+---
+_class: Person
+_id: jdoe
+components:
+  identity:
+    name: John Doe
+    givenName: John
+    surname: Doe
+---
+_class: Person
+_id: asmith
+components:
+  identity:
+    name: Alice Smith
+```
+
+**With markdown body:**
+
+```yaml
+_class: Task
+_id: abc123
+_body: |
+  # Task Title
+  Extended description stored as markdown body
+components:
+  workunit:
+    summary: Task Title
 ```
 
 #### Query Commands
@@ -226,8 +287,8 @@ ontology validate              # Validate all instances against schema
 ```
 
 #### Tips
-- The `new` command supports inline property setting: `ontology new myid:Class naming.name="My Name"` — this avoids validation failures from missing required fields.
-- The `decl cmp` command attaches existing components to a class: e.g., `ontology decl cmp :Service naming:Naming documentation:Documentation`
-- All schema/instance-mutating commands validate after write and roll back on failure.
+- **Use `import` for almost all writes**: File-based mutations via `ontology import` are preferred over CLI args, especially for multiline strings or batch operations.
+- Use `--db <dir>` when you want to test safely in an isolated location (the CLI reads/writes `<dir>/storage`). This is rare and mostly only useful in smoke testing.
+- All mutating commands validate after write and roll back on failure.
 
-IMPORTANT: Whenever you make changes to the `~/.ontology/storage/*.yml`, run `ontology validate` to confirm the changes are correct.
+IMPORTANT: Whenever you make changes to the ontology data, run `ontology validate` to confirm the changes are correct.

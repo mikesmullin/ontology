@@ -23,11 +23,24 @@ const __dirname = dirname(__filename);
 export const PROJECT_ROOT = resolve(__dirname, '..', '..');
 
 /**
+ * Get ontology DB root directory.
+ * Uses ONTOLOGY_DB when set, otherwise defaults to ~/.ontology.
+ * @returns {string}
+ */
+export function getDbPath() {
+  const configured = process.env.ONTOLOGY_DB?.trim();
+  if (configured) {
+    return resolve(configured);
+  }
+  return resolve(homedir(), '.ontology');
+}
+
+/**
  * Get the storage directory path
  * @returns {string}
  */
 export function getStoragePath() {
-  return resolve(homedir(), '.ontology', 'storage');
+  return resolve(getDbPath(), 'storage');
 }
 
 /**

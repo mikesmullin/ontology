@@ -70,6 +70,28 @@ bun link
 ontology --help
 ```
 
+### Primary workflow (import-first)
+
+```bash
+ontology import file.yaml
+ontology import batch.yaml --force
+ontology --db /tmp/my-ontology import file.yaml
+```
+
+Other supported commands for existing data:
+
+```bash
+ontology get <id>
+ontology set <id>:<class> <comp>.<key>=<value>
+ontology link <from>:<class> <rel> <to>:<class>
+ontology rm <id> [<id> ...]
+ontology validate
+ontology search "query"
+ontology graph <id>
+ontology schema list
+ontology schema get <name>
+```
+
 ## Obsidian-Compatible Storage
 
 - Default storage location is `~/.ontology/storage/`.
