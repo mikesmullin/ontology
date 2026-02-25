@@ -264,6 +264,9 @@ function validateClassInstance(instance, classSchema, componentSchemas, instance
 
         if (result.valid && (propDef.type === 'ref' || propDef.type === 'ref[]')) {
           const refValues = propDef.type === 'ref[]' ? value : [value];
+          const allowedTypes = Array.isArray(propDef.allowedTypes)
+            ? propDef.allowedTypes.filter((item) => typeof item === 'string' && item.trim())
+            : null;
           for (let i = 0; i < refValues.length; i++) {
             const rawRef = refValues[i];
             const parsedRef = parseTypedReference(rawRef);
@@ -293,6 +296,16 @@ function validateClassInstance(instance, classSchema, componentSchemas, instance
               errors.push({
                 severity: 'error',
                 message: `Property '${localName}.${propName}' reference type mismatch for '${parsedRef.id}:${parsedRef.className}' (actual class is '${target._class}')`,
+                source,
+                instance: instanceId
+              });
+              continue;
+            }
+
+            if (allowedTypes && allowedTypes.length > 0 && !allowedTypes.includes(parsedRef.className)) {
+              errors.push({
+                severity: 'error',
+                message: `Property '${localName}.${propName}' reference '${parsedRef.id}:${parsedRef.className}' violates allowedTypes [${allowedTypes.join(', ')}]`,
                 source,
                 instance: instanceId
               });
@@ -585,6 +598,51 @@ function validateSchemaNames(schema, errors, warnings) {
 }
 
 /**
+ * Validate schema property metadata extensions.
+ * @param {{ components: Record<string, any> }} schema
+ * @param {ValidationError[]} errors
+ * @param {ValidationError[]} warnings
+ */
+function validateSchemaPropertyMetadata(schema, errors, warnings) {
+  for (const [componentName, componentDef] of Object.entries(schema.components || {})) {
+    const properties = componentDef?.properties || {};
+
+    for (const [propName, propDef] of Object.entries(properties)) {
+      const location = `${componentName}.${propName}`;
+
+      if (propDef.allowedTypes !== undefined) {
+        if (propDef.type !== 'ref' && propDef.type !== 'ref[]') {
+          errors.push({
+            severity: 'error',
+            message: `Property '${location}' uses allowedTypes but type is '${propDef.type}' (expected ref/ref[])`,
+            source: 'schema',
+            instance: location
+          });
+        } else if (!Array.isArray(propDef.allowedTypes) || propDef.allowedTypes.some((item) => typeof item !== 'string' || !item.trim())) {
+          errors.push({
+            severity: 'error',
+            message: `Property '${location}' allowedTypes must be a string array when provided`,
+            source: 'schema',
+            instance: location
+          });
+        }
+      }
+
+      if (propDef.uiHints !== undefined) {
+        if (!Array.isArray(propDef.uiHints) || propDef.uiHints.some((item) => typeof item !== 'string' || !item.trim())) {
+          errors.push({
+            severity: 'error',
+            message: `Property '${location}' uiHints must be a string array when provided`,
+            source: 'schema',
+            instance: location
+          });
+        }
+      }
+    }
+  }
+}
+
+/**
  * Validate all instances against the schema
  * @param {LoadedData} data
  * @returns {ValidationResult}
@@ -618,6 +676,9 @@ export function validate(data) {
 
   // Validate schema naming conventions
   validateSchemaNames(schema, errors, warnings);
+
+  // Validate schema property metadata extensions (allowedTypes/uiHints)
+  validateSchemaPropertyMetadata(schema, errors, warnings);
 
   // Validate file-level class instance constraint (max 1 per file)
   validateSingleClassInstancePerFile(rawDocuments || [], errors, warnings);

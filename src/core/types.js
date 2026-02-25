@@ -6,6 +6,8 @@
  * @typedef {Object} PropertyDef
  * @property {'string' | 'bool' | 'date' | 'ref' | 'string[]' | 'bool[]' | 'date[]' | 'ref[]'} type
  * @property {boolean} [required]
+ * @property {string[]} [allowedTypes] - Allowed target classes for ref/ref[]
+ * @property {string[]} [uiHints] - Optional UI rendering hints for clients
  */
 
 /**
