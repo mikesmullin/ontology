@@ -90,9 +90,11 @@ schema:
 | `string` | Text value |
 | `bool` | Boolean (true/false) |
 | `date` | ISO 8601 date/datetime |
+| `ref` | Typed instance reference in `<_id>:<Class>` form |
 | `string[]` | Array of text values |
 | `bool[]` | Array of booleans |
 | `date[]` | Array of dates |
+| `ref[]` | Array of typed instance references |
 
 #### Example
 

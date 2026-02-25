@@ -4,7 +4,7 @@
 
 /**
  * @typedef {Object} PropertyDef
- * @property {'string' | 'bool' | 'date' | 'string[]' | 'bool[]' | 'date[]'} type
+ * @property {'string' | 'bool' | 'date' | 'ref' | 'string[]' | 'bool[]' | 'date[]' | 'ref[]'} type
  * @property {boolean} [required]
  */
 
@@ -26,7 +26,7 @@
 
 /**
  * @typedef {Object} QualifierDef
- * @property {'string' | 'bool' | 'date'} type
+ * @property {'string' | 'bool' | 'date' | 'ref'} type
  */
 
 /**

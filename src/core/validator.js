@@ -125,9 +125,54 @@ function validateType(value, type) {
         return { valid: true };
       }
       return { valid: false, error: `expected date, got ${typeof value}` };
+    case 'ref':
+      if (typeof value !== 'string') {
+        return { valid: false, error: `expected ref string (<id>:<Class>), got ${typeof value}` };
+      }
+      {
+        const parsedRef = parseTypedReference(value);
+        if (!parsedRef.valid) {
+          return { valid: false, error: parsedRef.error || 'invalid ref format' };
+        }
+      }
+      return { valid: true };
     default:
       return { valid: true };
   }
+}
+
+/**
+ * Parse typed reference in <id>:<Class> form
+ * @param {any} value
+ * @returns {{ valid: boolean, id?: string, className?: string, error?: string }}
+ */
+function parseTypedReference(value) {
+  if (typeof value !== 'string') {
+    return { valid: false, error: `expected ref string, got ${typeof value}` };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { valid: false, error: 'expected ref in <id>:<Class> form, got empty string' };
+  }
+
+  const separatorIndex = trimmed.lastIndexOf(':');
+  if (separatorIndex <= 0 || separatorIndex === trimmed.length - 1) {
+    return { valid: false, error: `expected ref in <id>:<Class> form, got '${trimmed}'` };
+  }
+
+  const id = trimmed.slice(0, separatorIndex).trim();
+  const className = trimmed.slice(separatorIndex + 1).trim();
+
+  if (!id) {
+    return { valid: false, error: `expected ref id before ':', got '${trimmed}'` };
+  }
+
+  if (!className || !/^[A-Za-z][A-Za-z0-9_]*$/.test(className)) {
+    return { valid: false, error: `expected class name after ':', got '${className || ''}'` };
+  }
+
+  return { valid: true, id, className };
 }
 
 /**
@@ -138,7 +183,7 @@ function validateType(value, type) {
  * @param {ValidationError[]} errors
  * @param {ValidationError[]} warnings
  */
-function validateClassInstance(instance, classSchema, componentSchemas, errors, warnings) {
+function validateClassInstance(instance, classSchema, componentSchemas, instancesById, errors, warnings) {
   const source = instance._source || 'unknown';
   const instanceId = `${instance._class}:${instance._id}`;
 
@@ -215,6 +260,44 @@ function validateClassInstance(instance, classSchema, componentSchemas, errors, 
             source,
             instance: instanceId
           });
+        }
+
+        if (result.valid && (propDef.type === 'ref' || propDef.type === 'ref[]')) {
+          const refValues = propDef.type === 'ref[]' ? value : [value];
+          for (let i = 0; i < refValues.length; i++) {
+            const rawRef = refValues[i];
+            const parsedRef = parseTypedReference(rawRef);
+
+            if (!parsedRef.valid) {
+              errors.push({
+                severity: 'error',
+                message: `Property '${localName}.${propName}' has invalid ref value${propDef.type === 'ref[]' ? ` at [${i}]` : ''}: ${parsedRef.error}`,
+                source,
+                instance: instanceId
+              });
+              continue;
+            }
+
+            const target = instancesById.get(parsedRef.id);
+            if (!target) {
+              errors.push({
+                severity: 'error',
+                message: `Property '${localName}.${propName}' references non-existent instance '${parsedRef.id}:${parsedRef.className}'`,
+                source,
+                instance: instanceId
+              });
+              continue;
+            }
+
+            if (target._class !== parsedRef.className) {
+              errors.push({
+                severity: 'error',
+                message: `Property '${localName}.${propName}' reference type mismatch for '${parsedRef.id}:${parsedRef.className}' (actual class is '${target._class}')`,
+                source,
+                instance: instanceId
+              });
+            }
+          }
         }
       }
     }
@@ -583,7 +666,7 @@ export function validate(data) {
       continue;
     }
 
-    validateClassInstance(instance, schema.classes[className], schema.components, errors, warnings);
+    validateClassInstance(instance, schema.classes[className], schema.components, instancesById, errors, warnings);
   }
 
   // Validate relation instances

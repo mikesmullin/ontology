@@ -27,9 +27,11 @@ It combines:
 | `string` | Text |
 | `bool` | Boolean |
 | `date` | ISO-8601 date/datetime string |
+| `ref` | Typed instance reference in `<_id>:<Class>` form |
 | `string[]` | Array of text |
 | `bool[]` | Array of booleans |
 | `date[]` | Array of ISO-8601 date/datetime strings |
+| `ref[]` | Array of typed instance references |
 
 #### Qualifier Structure (relations)
 
@@ -104,7 +106,7 @@ Use this compact pattern when creating or updating ontology files.
 | Section | Required fields | Notes |
 |---|---|---|
 | Header | `apiVersion`, `kind`, `metadata.namespace` | Must be `agent/v1` + `Ontology` |
-| Components | `schema.components.<Component>.properties` | Property types: `string`, `bool`, `date`, and array variants |
+| Components | `schema.components.<Component>.properties` | Property types: `string`, `bool`, `date`, `ref`, and array variants (`string[]`, `bool[]`, `date[]`, `ref[]`) |
 | Classes | `schema.classes.<Class>.components` | Maps local component names to component classes |
 | Relations | `schema.relations.<REL>` with `domain`, `range`, `cardinality` | Cardinality: `oto`, `otm`, `mto`, `mtm` |
 

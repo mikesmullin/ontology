@@ -70,7 +70,8 @@ Description:
   - _class reference is defined in schema
   - Component local names match class schema definition
   - Required component properties are present
-  - Property types match component schema (string, bool, date)
+  - Property types match component schema (string, bool, date, ref)
+  - ref/ref[] values must use <_id>:<Class> format and reference existing instances
   - No undefined properties (strict - no schemaless)
   - Relation endpoints exist
   - Relation domain/range constraints
